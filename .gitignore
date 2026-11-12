@@ -1,0 +1,15 @@
+﻿AGENTS.md
+MODLOG.md
+專案規劃書.md
+node_modules/
+.vscode/
+.idea/
+.DS_Store
+*.log
+*.7z
+*.zip
+dist/
+build/
+.env*
+.clasprc.json
+*.mp4

@@ -1,0 +1,3316 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#090d16">
+  <title>行動端 AI 輔助目測判煙系統</title>
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --panel-bg: rgba(15, 23, 42, 0.88);
+      --panel-border: rgba(148, 163, 184, 0.22);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-blue: #38bdf8;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background: #020617;
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* 直式手機外框容器：在手機上佔滿 100% 全螢幕，在電腦瀏覽器上呈現直式手機比例 */
+    .phone-shell {
+      position: relative;
+      width: 100vw;
+      height: 100dvh;
+      max-width: 460px;
+      background: var(--bg-dark);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.75);
+    }
+
+    @media (min-width: 500px) {
+      .phone-shell {
+        height: min(96dvh, 910px);
+        border-radius: 28px;
+        border: 2px solid rgba(148, 163, 184, 0.28);
+      }
+    }
+
+    /* ==================== 頂部狀態與模式切換列 ==================== */
+    .top-bar {
+      padding-top: calc(var(--safe-top) + 6px);
+      padding-left: 10px;
+      padding-right: 10px;
+      padding-bottom: 8px;
+      background: linear-gradient(180deg, rgba(9, 13, 22, 0.96) 0%, rgba(15, 23, 42, 0.85) 100%);
+      border-bottom: 1px solid var(--panel-border);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 11px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+      background: rgba(30, 41, 59, 0.85);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      white-space: nowrap;
+    }
+
+    .badge.ok {
+      background: rgba(16, 185, 129, 0.16);
+      border-color: rgba(16, 185, 129, 0.5);
+      color: #6ee7b7;
+    }
+    .badge.warn {
+      background: rgba(245, 158, 11, 0.18);
+      border-color: rgba(245, 158, 11, 0.55);
+      color: #fcd34d;
+    }
+    .badge.danger {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.6);
+      color: #fca5a5;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .icon-btn {
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid var(--panel-border);
+      color: var(--text-main);
+      border-radius: 8px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .icon-btn:active {
+      transform: scale(0.96);
+    }
+
+    /* 模式與模擬教學頁面切換器 (三欄：固定源實測 / 移動源實測 / 模擬教學獨立頁面) */
+    .mode-switcher {
+      display: grid;
+      grid-template-columns: 1fr 1fr 0.82fr;
+      background: rgba(2, 6, 23, 0.85);
+      padding: 3px;
+      border-radius: 10px;
+      border: 1px solid var(--panel-border);
+      gap: 4px;
+    }
+
+    .mode-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      padding: 7px 4px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      white-space: nowrap;
+    }
+
+    .mode-btn.active.stationary {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: #ffffff;
+      box-shadow: 0 2px 10px rgba(2, 132, 199, 0.45);
+    }
+
+    .mode-btn.active.mobile {
+      background: linear-gradient(135deg, #d97706, #b45309);
+      color: #ffffff;
+      box-shadow: 0 2px 10px rgba(217, 119, 6, 0.45);
+    }
+
+    .mode-btn.active.sim {
+      background: linear-gradient(135deg, #7c3aed, #6d28d9);
+      color: #ffffff;
+      box-shadow: 0 2px 10px rgba(124, 58, 237, 0.45);
+    }
+
+    /* 感測器微資訊列 */
+    .telemetry-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #cbd5e1;
+      background: rgba(15, 23, 42, 0.65);
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(148, 163, 184, 0.14);
+    }
+
+    /* ==================== 中央全螢幕取景與 CV 畫布區 ==================== */
+    .viewport-area {
+      position: relative;
+      flex: 1;
+      width: 100%;
+      overflow: hidden;
+      background: #020617;
+      touch-action: none;
+    }
+
+    /* 主視窗背景直接顯示鏡頭即時畫面 (display: block，硬體加速零延遲) */
+    #cameraVideo {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 1;
+      display: block;
+      background: #020617;
+    }
+
+    /* 透明疊加 HUD 與定格渲染畫布 */
+    #cvCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      display: block;
+      background: transparent;
+    }
+
+    /* 取景器中央底部微型變焦膠囊 (橫向極簡，絕不遮擋判煙視野) */
+    .viewport-zoom-pill {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 12;
+      display: flex;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 999px;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .zoom-btn {
+      background: transparent;
+      border: none;
+      color: #cbd5e1;
+      padding: 4px 11px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .zoom-btn.active {
+      background: var(--accent-blue);
+      color: #020617;
+      font-weight: 800;
+    }
+
+    /* 取景器右上微型曝光鎖定鈕 (極簡小圓鈕) */
+    .ae-lock-mini {
+      position: absolute;
+      top: 10px;
+      right: 90px;
+      z-index: 12;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      color: #cbd5e1;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: all 0.2s ease;
+    }
+    .ae-lock-mini.locked {
+      background: rgba(245, 158, 11, 0.9);
+      border-color: #fde68a;
+      color: #020617;
+    }
+
+    /* 拍照定格狀態橫幅 (拍照後置頂微型膠囊提示) */
+    .freeze-banner {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 126px;
+      z-index: 14;
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(8px);
+      border: 1px solid #38bdf8;
+      color: #f8fafc;
+      padding: 5px 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    }
+    .mini-unfreeze-btn {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      border: none;
+      color: #ffffff;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    /* 相機快速授權與原生拍照橫幅 (僅於即時串流尚未就緒時浮動顯示於下方，不遮擋主視窗) */
+    .camera-prompt-overlay {
+      position: absolute;
+      bottom: 48px;
+      left: 12px;
+      right: 12px;
+      z-index: 13;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+    }
+    .cam-prompt-content {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(56, 189, 248, 0.5);
+      padding: 10px 12px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* 模擬模式情境控制條 (當使用模擬器時顯示於取景器左上角下方) */
+    .sim-control-box {
+      position: absolute;
+      bottom: 8px;
+      left: 10px;
+      right: 92px;
+      z-index: 12;
+      background: rgba(15, 23, 42, 0.82);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .sim-control-box.full-width {
+      right: 10px;
+    }
+    .sim-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .sim-row input[type="range"] {
+      flex: 1;
+      accent-color: var(--accent-blue);
+      height: 4px;
+    }
+
+    /* 右側虛擬林格曼比色卡 (0~5 級) */
+    .ringelmann-strip {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      bottom: 10px;
+      width: 74px;
+      z-index: 12;
+      background: rgba(15, 23, 42, 0.82);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 12px;
+      padding: 5px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .ringelmann-header {
+      font-size: 10px;
+      font-weight: 700;
+      text-align: center;
+      color: #e2e8f0;
+      padding: 2px 0;
+      cursor: pointer;
+      background: rgba(30, 41, 59, 0.9);
+      border-radius: 6px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+
+    .ringelmann-cell {
+      flex: 1;
+      border-radius: 6px;
+      position: relative;
+      overflow: hidden;
+      border: 2px solid rgba(148, 163, 184, 0.3);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 3px 4px;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .ringelmann-cell.active-match {
+      border-color: #38bdf8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.85);
+      transform: scale(1.04);
+      z-index: 2;
+    }
+
+    .ringelmann-cell .r-label {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: rgba(15, 23, 42, 0.78);
+      color: #f8fafc;
+      align-self: flex-start;
+    }
+
+    .ringelmann-cell .r-pct {
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 3px;
+      border-radius: 3px;
+      background: rgba(15, 23, 42, 0.75);
+      color: #cbd5e1;
+      align-self: flex-end;
+    }
+
+    /* 白煙或峰值警報橫幅 (置於取景器底部變焦膠囊上方，絕不與頂部狀態列重疊) */
+    .cv-alert-banner {
+      position: absolute;
+      bottom: 44px;
+      left: 10px;
+      right: 90px;
+      z-index: 15;
+      background: rgba(239, 68, 68, 0.92);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      text-align: center;
+      box-shadow: 0 4px 15px rgba(239, 68, 68, 0.5);
+      display: none;
+      animation: pulseAlert 1s infinite alternate;
+    }
+    .cv-alert-banner.mobile-pos {
+      right: 10px;
+    }
+
+    @keyframes pulseAlert {
+      from { transform: scale(1); }
+      to { transform: scale(1.03); }
+    }
+
+    /* ==================== 底部單手操作面板 ==================== */
+    .bottom-dock {
+      background: linear-gradient(0deg, rgba(9, 13, 22, 0.98) 0%, rgba(15, 23, 42, 0.95) 100%);
+      border-top: 1px solid var(--panel-border);
+      padding: 10px 12px calc(var(--safe-bottom) + 10px);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* 即時數據三格卡 */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .metric-card {
+      background: rgba(30, 41, 59, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 10px;
+      padding: 5px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .metric-title {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .metric-val {
+      font-size: 16px;
+      font-weight: 800;
+      color: #f8fafc;
+      line-height: 1.25;
+    }
+
+    .metric-sub {
+      font-size: 10px;
+      color: #94a3b8;
+    }
+
+    /* 固定源 0~5 級單手大按鈕列 */
+    .grade-buttons-row {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 5px;
+    }
+
+    .grade-btn {
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 10px;
+      padding: 8px 0;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      background: rgba(30, 41, 59, 0.9);
+      color: #f8fafc;
+    }
+    .grade-btn span.sub {
+      font-size: 9px;
+      font-weight: 600;
+      opacity: 0.8;
+    }
+    .grade-btn.selected {
+      border: 2px solid var(--accent-blue);
+      background: rgba(56, 189, 248, 0.25);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.45);
+    }
+
+    /* 主行動按鈕列 */
+    .primary-actions-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .action-btn {
+      flex: 1;
+      border: none;
+      border-radius: 12px;
+      padding: 11px 12px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      color: #ffffff;
+      transition: transform 0.1s ease, opacity 0.2s;
+    }
+    .action-btn:active {
+      transform: scale(0.97);
+    }
+    .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-blue {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+    }
+    .btn-emerald {
+      background: linear-gradient(135deg, #059669, #10b981);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+    }
+    .btn-amber {
+      background: linear-gradient(135deg, #d97706, #ea580c);
+      box-shadow: 0 4px 14px rgba(234, 88, 12, 0.4);
+    }
+    .btn-red {
+      background: linear-gradient(135deg, #dc2626, #e11d48);
+      box-shadow: 0 4px 14px rgba(225, 29, 72, 0.45);
+    }
+    .btn-slate {
+      background: rgba(51, 65, 85, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      flex: 0.75;
+    }
+
+    /* 連續判煙 24 筆迷你進度格 */
+    .sequence-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 11px;
+      background: rgba(2, 6, 23, 0.65);
+      padding: 5px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    .seq-dots {
+      display: flex;
+      gap: 2px;
+      flex: 1;
+      overflow-x: auto;
+    }
+
+    .seq-dot {
+      width: 12px;
+      height: 14px;
+      border-radius: 3px;
+      background: rgba(51, 65, 85, 0.6);
+      font-size: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #cbd5e1;
+      flex-shrink: 0;
+    }
+    .seq-dot.exceed {
+      background: rgba(239, 68, 68, 0.85);
+      color: #fff;
+    }
+    .seq-dot.ok {
+      background: rgba(16, 185, 129, 0.75);
+      color: #fff;
+    }
+
+    /* ==================== 彈出式底部抽屜 (Modals) ==================== */
+    .drawer-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.78);
+      backdrop-filter: blur(4px);
+      z-index: 50;
+      display: none;
+      align-items: flex-end;
+    }
+    .drawer-backdrop.open {
+      display: flex;
+    }
+
+    .drawer-sheet {
+      width: 100%;
+      max-height: 88%;
+      background: #0f172a;
+      border-top-left-radius: 20px;
+      border-top-right-radius: 20px;
+      border-top: 1px solid rgba(148, 163, 184, 0.35);
+      padding: 14px 16px calc(var(--safe-bottom) + 16px);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+    }
+
+    .drawer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+      padding-bottom: 8px;
+    }
+
+    .drawer-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .form-group label {
+      font-size: 12px;
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+    .form-input {
+      background: rgba(2, 6, 23, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: #f8fafc;
+      font-size: 13px;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .preview-img-box {
+      width: 100%;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      background: #020617;
+    }
+    .preview-img-box img {
+      width: 100%;
+      display: block;
+    }
+
+    .record-item {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .record-item-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+    }
+    .record-links {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .record-links a {
+      color: var(--accent-blue);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    /* 通知 Toast */
+    .toast-box {
+      position: absolute;
+      top: 90px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--accent-blue);
+      color: #f8fafc;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      z-index: 90;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6);
+      display: none;
+      white-space: nowrap;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="phone-shell">
+    <!-- 通知訊息 -->
+    <div id="toastBox" class="toast-box">系統訊息</div>
+
+    <!-- ==================== 頂部狀態與模式切換列 ==================== -->
+    <header class="top-bar">
+      <div class="status-row">
+        <div id="cloudBadge" class="badge warn" onclick="openRecordsDrawer()" style="cursor:pointer;" title="點擊查看雲端試算表與 GAS/smoke 資料夾">
+          <span id="cloudDot">🟠</span>
+          <span id="cloudText">偵測環境中...</span>
+        </div>
+
+        <div id="sunBadge" class="badge ok" onclick="requestCompassPermission()" style="cursor:pointer;" title="點擊啟動電子羅盤或校正太陽角度">
+          <span id="sunStatusText">🟢 順光合格 (背光 32°)</span>
+        </div>
+
+        <div class="top-actions">
+          <button class="icon-btn" onclick="triggerPhotoUpload()" title="上傳現場照片進行辨識">📁</button>
+          <button class="icon-btn" id="btnResumeCamTop" onclick="resumeLiveCamera()" title="切換/恢復即時相機鏡頭" style="background:#059669;border-color:#34d399;">📷</button>
+          <button class="icon-btn" onclick="openRecordsDrawer()" title="稽查紀錄與匯出">📋 <span id="recCountBadge">0</span></button>
+          <button class="icon-btn" onclick="openSettingsDrawer()" title="系統參數與模擬模式設定">⚙️</button>
+        </div>
+      </div>
+
+      <!-- 模式切換器 (固定源實測 / 移動源實測 / 獨立模擬教學頁面) -->
+      <div class="mode-switcher">
+        <button id="btnModeStationary" class="mode-btn stationary active" onclick="switchMode('STATIONARY')">
+          🏭 固定源 (煙囪)
+        </button>
+        <button id="btnModeMobile" class="mode-btn mobile" onclick="switchMode('MOBILE')">
+          🚛 移動源 (烏賊車)
+        </button>
+        <button id="btnModeSim" class="mode-btn sim" onclick="switchMode('SIMULATION')">
+          🎓 模擬教學
+        </button>
+      </div>
+
+      <!-- 即時方位/GPS/路徑微資訊列 -->
+      <div class="telemetry-strip">
+        <span id="gpsText">📍 25.0330, 121.5654</span>
+        <span id="orientText">🧭 方位 185° | 仰角 +18°</span>
+        <span id="drivePathBadge" style="color:#38bdf8;font-weight:700;">📁 GAS\smoke</span>
+      </div>
+    </header>
+
+    <!-- 隱藏的上傳照片與原生相機拍照 input (雙保險機制) -->
+    <input type="file" id="photoFileInput" accept="image/*" style="display:none;" onchange="handlePhotoUpload(event)">
+    <input type="file" id="nativeCameraInput" accept="image/*" capture="environment" style="display:none;" onchange="handleNativeCameraCapture(event)">
+
+    <!-- ==================== 中央全螢幕取景與 CV 畫布區 ==================== -->
+    <main class="viewport-area" id="viewportArea">
+      <video id="cameraVideo" autoplay playsinline webkit-playsinline muted></video>
+      <canvas id="cvCanvas"></canvas>
+
+      <!-- 白煙反轉或黑煙峰值警報橫幅 (置於底部變焦鈕上方，絕不遮擋頂部資訊) -->
+      <div id="cvAlertBanner" class="cv-alert-banner">⚠️ 偵測到高濃度黑煙！</div>
+
+      <!-- 畫面拍照定格橫幅 (拍照後浮動顯示於頂部) -->
+      <div id="freezeBanner" class="freeze-banner hidden">
+        <span id="freezeBannerText">⏸️ 畫面已拍照定格 (可拖曳準星微調)</span>
+        <button class="mini-unfreeze-btn" onclick="resumeLiveCamera()">🔄 恢復即時鏡頭</button>
+      </div>
+
+      <!-- 取景器右上微型曝光鎖定按鈕 (極簡透明，不擋視野) -->
+      <button id="btnAeLock" class="ae-lock-mini" onclick="toggleExposureLock()" title="鎖定/解鎖曝光與白平衡">
+        <span id="aeLockIcon">🔓</span>
+      </button>
+
+      <!-- 取景器底部中央微型變焦膠囊 (1x / 2x / 3x) -->
+      <div class="viewport-zoom-pill">
+        <button class="zoom-btn active" id="zoom1x" onclick="setZoomLevel(1)">1x</button>
+        <button class="zoom-btn" id="zoom2x" onclick="setZoomLevel(2)">2x</button>
+        <button class="zoom-btn" id="zoom3x" onclick="setZoomLevel(3)">3x</button>
+      </div>
+
+      <!-- 底部非遮蔽式相機授權提示列 (僅在瀏覽器阻擋自動啟動相機時出現，絕不蓋住主畫面) -->
+      <div id="cameraPromptOverlay" class="camera-prompt-overlay hidden">
+        <div class="cam-prompt-content">
+          <div style="font-size:11px;color:#e2e8f0;font-weight:700;line-height:1.35;">
+            📷 點擊授權啟動即時背景鏡頭，或直接調用手機原生相機：
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button class="icon-btn" style="background:#0284c7;border-color:#38bdf8;color:#fff;padding:5px 8px;font-size:11px;" onclick="tryStartRearCamera(true)">
+              🎥 啟動即時鏡頭
+            </button>
+            <button class="icon-btn" style="background:#d97706;border-color:#fbbf24;color:#fff;padding:5px 8px;font-size:11px;" onclick="triggerNativeCameraCapture()">
+              📸 原生相機拍照
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 模擬教學頁面專屬控制面板 (僅在「🎓 模擬教學」頁面顯示) -->
+      <div id="simControlBox" class="sim-control-box hidden">
+        <div class="sim-row" style="margin-bottom:2px;">
+          <div style="display:flex;gap:4px;">
+            <button id="btnSimSubStat" class="icon-btn" style="padding:2px 8px;font-size:10px;background:#0284c7;border-color:#38bdf8;" onclick="setSimSubMode('STATIONARY')">🏭 模擬煙囪</button>
+            <button id="btnSimSubMob" class="icon-btn" style="padding:2px 8px;font-size:10px;" onclick="setSimSubMode('MOBILE')">🚛 模擬烏賊車</button>
+          </div>
+          <span id="simSliderVal" style="color:#fcd34d;font-weight:800;">林格曼 2 級 (45%)</span>
+          <button class="icon-btn" style="padding:1px 6px;font-size:10px;" onclick="toggleWhiteSmokeSim()" id="btnWhiteSim">💨 測白煙</button>
+        </div>
+        <div class="sim-row">
+          <span id="simSliderTitle" style="font-weight:700;color:#c084fc;white-space:nowrap;">🎬 濃度:</span>
+          <input type="range" id="simSmokeSlider" min="0" max="100" value="45" oninput="onSimSliderChange(this.value)">
+          <button id="btnTriggerSimTruck" class="icon-btn hidden" style="padding:2px 8px;font-size:10px;background:#d97706;" onclick="triggerSimDieselTruck()">🚛 派車</button>
+        </div>
+      </div>
+
+      <!-- 右側懸浮虛擬林格曼比色卡 (0~5 級) -->
+      <aside id="ringelmannStrip" class="ringelmann-strip">
+        <div class="ringelmann-header" onclick="toggleRingelmannStyle()" title="點擊切換標準網格 / 純灰階色塊">
+          林格曼卡
+        </div>
+        <div class="ringelmann-cell" id="rCell0" onclick="selectManualGrade(0)">
+          <span class="r-label">0級</span>
+          <span class="r-pct">0%</span>
+        </div>
+        <div class="ringelmann-cell" id="rCell1" onclick="selectManualGrade(1)">
+          <span class="r-label">1級</span>
+          <span class="r-pct">20%</span>
+        </div>
+        <div class="ringelmann-cell" id="rCell2" onclick="selectManualGrade(2)">
+          <span class="r-label">2級</span>
+          <span class="r-pct">40%</span>
+        </div>
+        <div class="ringelmann-cell" id="rCell3" onclick="selectManualGrade(3)">
+          <span class="r-label">3級</span>
+          <span class="r-pct">60%</span>
+        </div>
+        <div class="ringelmann-cell" id="rCell4" onclick="selectManualGrade(4)">
+          <span class="r-label">4級</span>
+          <span class="r-pct">80%</span>
+        </div>
+        <div class="ringelmann-cell" id="rCell5" onclick="selectManualGrade(5)">
+          <span class="r-label">5級</span>
+          <span class="r-pct">100%</span>
+        </div>
+      </aside>
+    </main>
+
+    <!-- ==================== 底部單手操作面板 ==================== -->
+    <footer class="bottom-dock">
+      <!-- 即時數據三格卡 -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <span class="metric-title" id="mTitle1">實測不透光率</span>
+          <span class="metric-val" id="mValOpacity" style="color:#38bdf8;">42.0%</span>
+          <span class="metric-sub" id="mSubLuminance">煙 118 / 空 204</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-title" id="mTitle2">AI 建議級數</span>
+          <span class="metric-val" id="mValGrade" style="color:#fcd34d;">2 級</span>
+          <span class="metric-sub" id="mSubGradeDesc">標準 40% 黑煙</span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-title" id="mTitle3">15秒法規節拍</span>
+          <span class="metric-val" id="mValTimer">15s</span>
+          <span class="metric-sub" id="mSubCount">已記 0 / 24 筆</span>
+        </div>
+      </div>
+
+      <!-- ==================== 模式 A：固定源專屬控制區 ==================== -->
+      <div id="stationaryControls" style="display:flex;flex-direction:column;gap:7px;">
+        <!-- 24 筆連續觀測迷你進度條 -->
+        <div class="sequence-bar">
+          <span style="font-weight:700;color:#94a3b8;white-space:nowrap;">連續判煙:</span>
+          <div id="seqDotsContainer" class="seq-dots"></div>
+          <button class="icon-btn" style="padding:2px 6px;font-size:10px;" onclick="resetStationaryReadings()">清空</button>
+        </div>
+
+        <!-- 0~5 級單手快速紀錄按鈕 -->
+        <div class="grade-buttons-row">
+          <button class="grade-btn" id="gBtn0" onclick="recordStationaryStep(0)">0級<span class="sub">0%</span></button>
+          <button class="grade-btn" id="gBtn1" onclick="recordStationaryStep(1)">1級<span class="sub">20%</span></button>
+          <button class="grade-btn selected" id="gBtn2" onclick="recordStationaryStep(2)">2級<span class="sub">40%</span></button>
+          <button class="grade-btn" id="gBtn3" onclick="recordStationaryStep(3)">3級<span class="sub">60%</span></button>
+          <button class="grade-btn" id="gBtn4" onclick="recordStationaryStep(4)">4級<span class="sub">80%</span></button>
+          <button class="grade-btn" id="gBtn5" onclick="recordStationaryStep(5)">5級<span class="sub">100%</span></button>
+        </div>
+
+        <!-- 未定格時（即時相機取景）：啟動節拍 + 📸 現場拍照按鈕 -->
+        <div id="statLiveActions" class="primary-actions-row">
+          <button id="btnPacerToggle" class="action-btn btn-slate" onclick="toggleStationaryPacer()">
+            ⏱️ <span id="pacerBtnText">啟動15秒節拍</span>
+          </button>
+          <button class="action-btn btn-blue" onclick="freezeCameraFrame()">
+            📸 現場拍照辨識
+          </button>
+        </div>
+
+        <!-- 定格後（拍照完成）：重新拍攝 + ☁️ 存證並上傳雲端 -->
+        <div id="statFrozenActions" class="primary-actions-row hidden">
+          <button class="action-btn btn-slate" onclick="resumeLiveCamera()">
+            🔄 重新拍攝 (即時鏡頭)
+          </button>
+          <button class="action-btn btn-emerald" onclick="captureStationaryEvidence()">
+            ☁️ 存證並上傳雲端
+          </button>
+        </div>
+      </div>
+
+      <!-- ==================== 模式 B：移動源 (烏賊車) 專屬控制區 ==================== -->
+      <div id="mobileControls" class="hidden" style="display:flex;flex-direction:column;gap:7px;">
+        <div class="sequence-bar">
+          <div style="display:flex;align-items:center;gap:4px;">
+            <span style="font-weight:700;color:#fcd34d;">對照框:</span>
+            <button id="btnRoiSmall" class="icon-btn" style="padding:1px 6px;font-size:10px;background:#0284c7;border-color:#38bdf8;" onclick="setMobileRoiSize('S')">小</button>
+            <button id="btnRoiMed" class="icon-btn" style="padding:1px 6px;font-size:10px;" onclick="setMobileRoiSize('M')">中</button>
+            <button id="btnRoiLarge" class="icon-btn" style="padding:1px 6px;font-size:10px;" onclick="setMobileRoiSize('L')">大</button>
+          </div>
+          <span id="ringBufferStatusText" style="color:#e2e8f0;font-weight:600;font-size:10px;">基準已就緒</span>
+        </div>
+
+        <!-- 未定格時：鎖定基準 + 📸 現場拍照辨識 -->
+        <div id="mobLiveActions" class="primary-actions-row">
+          <button id="btnLockRoadBg" class="action-btn btn-slate" onclick="lockRoadBaseline()">
+            🎯 鎖定無車路面
+          </button>
+          <button class="action-btn btn-amber" onclick="freezeCameraFrame()">
+            📸 現場拍照辨識
+          </button>
+        </div>
+
+        <!-- 定格後：重新拍攝 + ☁️ 存證並上傳雲端 (單張照片) -->
+        <div id="mobFrozenActions" class="primary-actions-row hidden">
+          <button class="action-btn btn-slate" onclick="resumeLiveCamera()">
+            🔄 重新拍攝 (即時鏡頭)
+          </button>
+          <button class="action-btn btn-amber" onclick="captureMobileEvidence()">
+            ☁️ 存證並上傳雲端
+          </button>
+        </div>
+      </div>
+    </footer>
+
+    <!-- ==================== 抽屜 1：存證預覽與雲端上傳確認視窗 ==================== -->
+    <div id="captureDrawer" class="drawer-backdrop">
+      <div class="drawer-sheet">
+        <div class="drawer-header">
+          <span class="drawer-title" id="captureDrawerTitle">📸 判煙存證確認與雲端歸檔</span>
+          <button class="icon-btn" onclick="closeDrawer('captureDrawer')">✕ 關閉</button>
+        </div>
+
+        <div class="preview-img-box">
+          <img id="evidencePreviewImg" src="" alt="判煙證據預覽圖">
+        </div>
+
+        <div class="form-group">
+          <label id="inputLabelPrimary">污染源名稱 / 煙囪編號（或車牌號碼）</label>
+          <input type="text" id="inputPrimaryName" class="form-input" placeholder="例如：A廠一號鍋爐煙囪 / KPA-8892">
+        </div>
+
+        <div class="form-group">
+          <label>稽查地點 / 備註說明</label>
+          <input type="text" id="inputNote" class="form-input" placeholder="例如：順光觀測、排放黑煙明顯">
+        </div>
+
+        <div style="font-size:11px;color:#94a3b8;line-height:1.4;">
+          📌 將同步寫入 <b>Google Sheets</b> 並將含浮水印證據照片存放至 <b>Google Drive (<span id="confirmDrivePath">GAS\smoke</span>)</b>。
+        </div>
+
+        <div class="primary-actions-row">
+          <button class="action-btn btn-slate" onclick="downloadCurrentEvidenceLocal()">
+            💾 下載本機照片
+          </button>
+          <button id="btnSubmitCloud" class="action-btn btn-emerald" onclick="submitEvidenceToCloud()">
+            ☁️ 上傳 Sheets 與 Drive
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 抽屜 2：雲端與本機紀錄列表 & 報表匯出 ==================== -->
+    <div id="recordsDrawer" class="drawer-backdrop">
+      <div class="drawer-sheet">
+        <div class="drawer-header">
+          <span class="drawer-title">📋 判煙稽查紀錄與雲端連結</span>
+          <button class="icon-btn" onclick="closeDrawer('recordsDrawer')">✕ 關閉</button>
+        </div>
+
+        <div id="cloudLinksBox" style="background:rgba(2,132,199,0.15);border:1px solid rgba(56,189,248,0.4);padding:10px;border-radius:10px;font-size:12px;display:flex;flex-direction:column;gap:6px;">
+          <div><b>☁️ 雲端儲存狀態：</b><span id="drawerCloudStatus">檢測中</span></div>
+          <div><b>📁 Drive 照片路徑：</b><code>GAS \ smoke</code>（自動建立日期存證子資料夾）</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;">
+            <a id="linkGoogleSheet" href="#" target="_blank" class="icon-btn" style="text-decoration:none;display:none;">📊 開啟 Google Sheets 紀錄表</a>
+            <a id="linkGoogleDrive" href="#" target="_blank" class="icon-btn" style="text-decoration:none;display:none;">📂 開啟 Drive (GAS\smoke)</a>
+            <button class="icon-btn" onclick="refreshCloudRecords()">🔄 重新整理雲端紀錄</button>
+          </div>
+        </div>
+
+        <div class="primary-actions-row">
+          <button class="action-btn btn-blue" style="font-size:12px;padding:8px;" onclick="exportRecordsToCSV()">
+            📄 匯出 UTF-8 CSV 報表
+          </button>
+          <button class="action-btn btn-amber" style="font-size:12px;padding:8px;" onclick="printInspectionReportPDF()">
+            🖨️ 產生列印版稽查單
+          </button>
+        </div>
+
+        <div id="recordsListContainer" style="display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto;">
+          <!-- 動態渲染紀錄項目 -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 抽屜 3：系統參數表 (CONFIG) 與感測器校正 ==================== -->
+    <div id="settingsDrawer" class="drawer-backdrop">
+      <div class="drawer-sheet">
+        <div class="drawer-header">
+          <span class="drawer-title">⚙️ 系統參數表 (Database-First) 與校正</span>
+          <button class="icon-btn" onclick="closeDrawer('settingsDrawer')">✕ 關閉</button>
+        </div>
+
+        <div class="form-group">
+          <label>Google Drive 照片存放路徑 (DRIVE_FOLDER_PATH)</label>
+          <input type="text" id="cfgDrivePath" class="form-input" value="GAS/smoke">
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div class="form-group">
+            <label>背向太陽容許半角 (°)</label>
+            <input type="number" id="cfgSunAngle" class="form-input" value="70">
+          </div>
+          <div class="form-group">
+            <label>固定源節拍秒數 (秒)</label>
+            <input type="number" id="cfgStatInterval" class="form-input" value="15">
+          </div>
+          <div class="form-group">
+            <label>固定源警戒不透光率 (%)</label>
+            <input type="number" id="cfgStatWarn" class="form-input" value="40">
+          </div>
+          <div class="form-group">
+            <label>烏賊車警戒不透光率 (%)</label>
+            <input type="number" id="cfgMobWarn" class="form-input" value="30">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>🧭 手動模擬/微調鏡頭方位角 (0°~360°，測試順光/逆光檢核)：<span id="lblManualHeading">185°</span></label>
+          <input type="range" id="sliderManualHeading" min="0" max="359" value="185" oninput="onManualHeadingChange(this.value)">
+        </div>
+
+        <div class="form-group" style="border-top:1px solid rgba(148,163,184,0.2);padding-top:8px;">
+          <label>視訊影像來源模式：</label>
+          <div style="display:flex;gap:8px;">
+            <button class="action-btn btn-slate" style="font-size:12px;padding:8px;" onclick="enableSimulationMode();closeDrawer('settingsDrawer');">
+              🎬 切換至卡通模擬場景
+            </button>
+            <button class="action-btn btn-blue" style="font-size:12px;padding:8px;" onclick="resumeLiveCamera();closeDrawer('settingsDrawer');">
+              📷 啟動現場真實鏡頭
+            </button>
+          </div>
+        </div>
+
+        <div class="primary-actions-row">
+          <button class="action-btn btn-slate" onclick="syncConfigFromGAS()">
+            ☁️ 從 Sheets 重新讀取參數
+          </button>
+          <button class="action-btn btn-emerald" onclick="applyCustomConfig()">
+            ✅ 套用參數設定
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * ========================================================================
+     * 1. 全域外部化參數 (CONFIG - 支援從 Google Sheets 系統參數表動態覆寫)
+     * ========================================================================
+     */
+    const CONFIG = {
+      DRIVE_FOLDER_PATH: 'GAS/smoke',
+      USE_DATE_SUBFOLDER: true,
+      SUN_BACK_ANGLE_LIMIT: 70,     // 背向太陽 140° 範圍 => 與太陽反方向夾角 <= 70° 為順光合格
+      SUN_SIDE_ANGLE_LIMIT: 105,    // 70° ~ 105° 側光注意，> 105° 逆光違規
+      STATIONARY_INTERVAL_SEC: 15,  // 固定源每 15 秒震動提醒
+      STATIONARY_TOTAL_COUNTS: 24,  // 預設連續觀測 24 筆 (6 分鐘)
+      STATIONARY_OPACITY_WARN: 40,  // 固定源 40% (林格曼 2 級) 警戒
+      MOBILE_OPACITY_WARN: 30,      // 移動源烏賊車 30% 不透光率峰值警報
+      MOBILE_BUFFER_SEC: 5,         // 5 秒循環緩衝錄影
+      MOBILE_BUFFER_FPS: 10,        // 10 FPS => 50 幀
+      WHITE_SMOKE_RATIO: 1.12,      // 白煙反轉閾值
+      RINGELMANN_G1_MIN: 15,
+      RINGELMANN_G2_MIN: 35,
+      RINGELMANN_G3_MIN: 55,
+      RINGELMANN_G4_MIN: 75,
+      RINGELMANN_G5_MIN: 95
+    };
+
+    /**
+     * ========================================================================
+     * 2. 系統狀態管理 (STATE)
+     * ========================================================================
+     */
+    const STATE = {
+      isGasEnv: typeof google !== 'undefined' && google.script && google.script.run,
+      sheetUrl: '',
+      driveFolderUrl: '',
+      mode: 'STATIONARY',           // 'STATIONARY' | 'MOBILE' | 'SIMULATION'
+      simSubMode: 'STATIONARY',     // 模擬教學頁面內部子模式：'STATIONARY' (煙囪) | 'MOBILE' (烏賊車)
+      useRealCamera: true,          // 主視窗預設直接顯示真實鏡頭即時畫面
+      frozenFrame: null,            // 現場拍照定格畫布/影像物件
+      uploadedImage: null,          // 上傳照片物件 Image
+      uploadedImageFileName: '',    // 上傳照片檔案名稱
+      mediaStream: null,
+      videoTrack: null,
+      aeLocked: false,
+      lockedExposureGain: 1.0,
+      zoomLevel: 1,
+      ringelmannGridStyle: true,    // true: 標準網格紋理, false: 純灰階色塊
+
+      // GPS 與太陽感測器狀態
+      lat: 25.0330,
+      lng: 121.5654,
+      heading: 185,                 // 鏡頭羅盤方位角
+      pitch: 18,                    // 鏡頭仰角
+      sunAzimuth: 5,                // 太陽方位角
+      sunAltitude: 42,              // 太陽仰角
+      sunDiffFromBack: 0,           // 鏡頭朝向與「背對太陽方向」之夾角
+      sunStatus: 'OK',              // 'OK' | 'WARN' | 'DANGER'
+      sunStatusText: '🟢 順光合格',
+
+      // 固定源雙點採樣準星 (相對畫布比例 0~1)
+      plumeROI: { x: 0.44, y: 0.34, r: 22 },
+      skyROI: { x: 0.22, y: 0.26, r: 22 },
+      draggingROI: null,
+
+      // 固定源即時測值與 15 秒節拍器
+      skyLuma: 210,
+      plumeLuma: 120,
+      currentOpacity: 0.0,
+      isWhiteSmoke: false,
+      aiGrade: 0,
+      selectedGrade: 2,
+      pacerActive: false,
+      pacerRemainSec: 15,
+      pacerIntervalId: null,
+      stationaryReadings: [],       // { index, time, opacity, aiGrade, manualGrade }
+
+      // 移動源 (烏賊車) 雙 ROI 基準：精巧尺寸 (預設小框 14% x 9%，可切換 小/中/大)
+      mobileRoiSize: 'S',
+      roadROI: { x: 0.50, y: 0.44, w: 0.14, h: 0.09 },   // 🔴 車輛黑煙排氣採樣框 (精準鎖定排氣管煙羽)
+      roadBgROI: { x: 0.22, y: 0.58, w: 0.14, h: 0.09 }, // 🔵 無煙路面基準框
+      roadBaselineLuma: 110,
+      peakLuma: 110,
+      roadBaselineLocked: true,
+      ringBuffer: [],               // 儲存最近 50 幀 { timestamp, timeStr, opacity, luma, dataUrl }
+      lastBufferCaptureMs: 0,
+      peakOpacityInBuffer: 0,
+      lastAutoTriggerMs: 0,
+
+      // 模擬器狀態 (僅在 🎓 模擬教學 頁面使用)
+      simSmokePercent: 45,
+      simWhiteSmoke: false,
+      simTick: 0,
+      simTruckX: -0.35,             // 模擬柴油車位置 (-0.4 ~ 1.3)
+      simTruckPlate: 'KPA-8892',
+
+      // 待上傳之證據暫存包
+      pendingEvidence: null,
+      records: []
+    };
+
+    /**
+     * ========================================================================
+     * 3. 系統初始化流程
+     * ========================================================================
+     */
+    window.addEventListener('DOMContentLoaded', () => {
+      loadLocalRecords();
+      buildRingelmannStripVisuals();
+      renderStationarySequenceDots();
+      setupCanvasTouchInteractions();
+      initGeolocationAndSensors();
+      updateSunPositionAndCompliance();
+
+      // 預設在主視窗直接啟動真實相機即時畫面
+      tryStartRearCamera(false);
+
+      // 若行動瀏覽器要求首次手勢才允許播放視訊，於首次觸控時自動重試啟動鏡頭
+      const autoRetryCameraOnGesture = () => {
+        if (STATE.mode !== 'SIMULATION' && !STATE.mediaStream && !STATE.frozenFrame && !STATE.uploadedImage) {
+          tryStartRearCamera(false);
+        }
+      };
+      document.addEventListener('touchstart', autoRetryCameraOnGesture, { once: true, passive: true });
+      document.addEventListener('click', autoRetryCameraOnGesture, { once: true });
+
+      // 啟動主視覺渲染與 200ms 判煙採樣迴圈
+      requestAnimationFrame(mainRenderLoop);
+      setInterval(performPeriodicSmokeAnalysis, 200);
+
+      // 偵測 GAS 環境並讀取雲端系統參數表
+      if (STATE.isGasEnv) {
+        syncConfigFromGAS();
+        refreshCloudRecords();
+      } else {
+        updateCloudBadge(false, '本機離線模式 (Local)');
+      }
+    });
+
+    /**
+     * 顯示短暫提示 Toast
+     */
+    function showToast(msg, duration = 2600) {
+      const box = document.getElementById('toastBox');
+      box.textContent = msg;
+      box.style.display = 'block';
+      clearTimeout(box._timer);
+      box._timer = setTimeout(() => {
+        box.style.display = 'none';
+      }, duration);
+    }
+
+    /**
+     * 更新頂部雲端連線燈號
+     */
+    function updateCloudBadge(isOnline, text) {
+      const badge = document.getElementById('cloudBadge');
+      const dot = document.getElementById('cloudDot');
+      const label = document.getElementById('cloudText');
+      badge.className = 'badge ' + (isOnline ? 'ok' : 'warn');
+      dot.textContent = isOnline ? '🟢' : '🟠';
+      label.textContent = text;
+      document.getElementById('drawerCloudStatus').textContent = text;
+    }
+
+    /**
+     * 從 GAS 後端讀取 Google Sheets 系統參數表
+     */
+    function syncConfigFromGAS() {
+      if (!STATE.isGasEnv) {
+        showToast('目前為本機瀏覽器環境，使用內建預設參數');
+        return;
+      }
+      updateCloudBadge(false, '同步雲端參數中...');
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res && res.ok && res.config) {
+            Object.assign(CONFIG, res.config);
+            STATE.sheetUrl = res.sheetUrl || '';
+            STATE.driveFolderUrl = res.driveFolderUrl || '';
+
+            document.getElementById('cfgDrivePath').value = CONFIG.DRIVE_FOLDER_PATH || 'GAS/smoke';
+            document.getElementById('cfgSunAngle').value = CONFIG.SUN_BACK_ANGLE_LIMIT;
+            document.getElementById('cfgStatInterval').value = CONFIG.STATIONARY_INTERVAL_SEC;
+            document.getElementById('cfgStatWarn').value = CONFIG.STATIONARY_OPACITY_WARN;
+            document.getElementById('cfgMobWarn').value = CONFIG.MOBILE_OPACITY_WARN;
+
+            const displayPath = String(CONFIG.DRIVE_FOLDER_PATH || 'GAS/smoke').replace(/\//g, '\\');
+            document.getElementById('drivePathBadge').textContent = '📁 ' + displayPath;
+            document.getElementById('confirmDrivePath').textContent = displayPath;
+
+            if (STATE.sheetUrl) {
+              const sLink = document.getElementById('linkGoogleSheet');
+              sLink.href = STATE.sheetUrl;
+              sLink.style.display = 'inline-flex';
+            }
+            if (STATE.driveFolderUrl) {
+              const dLink = document.getElementById('linkGoogleDrive');
+              dLink.href = STATE.driveFolderUrl;
+              dLink.style.display = 'inline-flex';
+            }
+
+            updateCloudBadge(true, 'GAS 雲端已連線');
+            updateSunPositionAndCompliance();
+            showToast('✅ 已從 Google Sheets 載入系統參數表');
+          }
+        })
+        .withFailureHandler(err => {
+          updateCloudBadge(false, '雲端連線失敗 (離線備援)');
+          showToast('⚠️ 無法連線 GAS：' + (err.message || err));
+        })
+        .getConfigFromSheet();
+    }
+
+    /**
+     * 套用使用者於設定抽屜修改的參數
+     */
+    function applyCustomConfig() {
+      CONFIG.DRIVE_FOLDER_PATH = document.getElementById('cfgDrivePath').value.trim() || 'GAS/smoke';
+      CONFIG.SUN_BACK_ANGLE_LIMIT = Number(document.getElementById('cfgSunAngle').value) || 70;
+      CONFIG.STATIONARY_INTERVAL_SEC = Number(document.getElementById('cfgStatInterval').value) || 15;
+      CONFIG.STATIONARY_OPACITY_WARN = Number(document.getElementById('cfgStatWarn').value) || 40;
+      CONFIG.MOBILE_OPACITY_WARN = Number(document.getElementById('cfgMobWarn').value) || 30;
+
+      const displayPath = CONFIG.DRIVE_FOLDER_PATH.replace(/\//g, '\\');
+      document.getElementById('drivePathBadge').textContent = '📁 ' + displayPath;
+      document.getElementById('confirmDrivePath').textContent = displayPath;
+      STATE.pacerRemainSec = CONFIG.STATIONARY_INTERVAL_SEC;
+      document.getElementById('mValTimer').textContent = STATE.pacerRemainSec + 's';
+
+      updateSunPositionAndCompliance();
+      closeDrawer('settingsDrawer');
+      showToast('✅ 系統參數已更新');
+    }
+
+    /**
+     * ========================================================================
+     * 4. 雙模相機引擎：即時串流 (WebRTC) + 原生快拍降級 (Native Capture Fallback)
+     * ========================================================================
+     */
+    async function tryStartRearCamera(isManualClick = false) {
+      const promptOverlay = document.getElementById('cameraPromptOverlay');
+      const video = document.getElementById('cameraVideo');
+      if (video) video.style.display = 'block';
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.warn('瀏覽器不支援 getUserMedia，提供原生相機拍照按鈕');
+        STATE.useRealCamera = false;
+        if (promptOverlay && STATE.mode !== 'SIMULATION') promptOverlay.classList.remove('hidden');
+        showToast('⚠️ 瀏覽器未提供 WebRTC 鏡頭 API，請使用原生拍照', 3000);
+        return;
+      }
+
+      try {
+        let stream = null;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+        } catch (firstErr) {
+          console.warn('後置鏡頭指定參數受限，嘗試任意視訊鏡頭:', firstErr);
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+
+        video.srcObject = stream;
+        video.muted = true;
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+        await video.play();
+
+        STATE.mediaStream = stream;
+        STATE.videoTrack = stream.getVideoTracks()[0] || null;
+        STATE.useRealCamera = true;
+        STATE.frozenFrame = null;
+        STATE.uploadedImage = null;
+
+        if (promptOverlay) promptOverlay.classList.add('hidden');
+        updateFreezeActionButtons(false);
+        showToast('📷 即時鏡頭已成功啟動！畫面即時取景中');
+      } catch (e) {
+        console.warn('WebRTC 鏡頭啟動失敗:', e);
+        STATE.useRealCamera = false;
+        if (promptOverlay && STATE.mode !== 'SIMULATION' && !STATE.frozenFrame && !STATE.uploadedImage) {
+          promptOverlay.classList.remove('hidden');
+        }
+
+        if (isManualClick) {
+          // 只有當手動點擊且失敗時，明確告知權限受阻原因，絕不自動私自呼叫原生相機！
+          const errName = e.name || '';
+          if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+            showToast('⚠️ 鏡頭授權被拒絕，請檢查瀏覽器設定允許相機權限');
+          } else {
+            showToast('⚠️ 雲端架構限制即時串流：' + (e.message || '無法開啟即時視訊'));
+          }
+        }
+      }
+    }
+
+    /**
+     * 點擊底部提示列時，優先嘗試啟動鏡頭
+     */
+    function handlePromptOverlayClick() {
+      tryStartRearCamera(true);
+    }
+
+    /**
+     * 調用手機作業系統原生相機 (HTML5 capture="environment" 100% 繞過 GAS iframe 限制)
+     */
+    function triggerNativeCameraCapture() {
+      const camInput = document.getElementById('nativeCameraInput');
+      if (camInput) {
+        camInput.value = '';
+        camInput.click();
+      }
+    }
+
+    /**
+     * 處理手機原生相機拍攝回傳之高畫質現場照片
+     */
+    function handleNativeCameraCapture(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          // 若當前在模擬教學頁，拍照後自動切回對應的實測主視窗
+          if (STATE.mode === 'SIMULATION') {
+            switchMode(STATE.simSubMode || 'STATIONARY');
+          }
+          STATE.frozenFrame = img;
+          STATE.uploadedImage = null;
+          STATE.uploadedImageFileName = `現場相機實測_${file.name || '照片'}`;
+          STATE.useRealCamera = false;
+
+          const promptOverlay = document.getElementById('cameraPromptOverlay');
+          if (promptOverlay) promptOverlay.classList.add('hidden');
+          document.getElementById('simControlBox').classList.add('hidden');
+
+          updateFreezeActionButtons(true);
+          performPeriodicSmokeAnalysis();
+          updateFreezeBannerContent();
+
+          showToast('📸 現場相機拍攝成功！可拖曳準星微調，確認後點擊「☁️ 存證並上傳雲端」');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    /**
+     * 動態更新頂部定格橫幅文字（確保隨固定源/移動源切換即時顯示正確的辨識數據）
+     */
+    function updateFreezeBannerContent() {
+      const banner = document.getElementById('freezeBanner');
+      const bannerText = document.getElementById('freezeBannerText');
+      if (!banner || !bannerText) return;
+
+      if (!STATE.frozenFrame && !STATE.uploadedImage) {
+        banner.classList.add('hidden');
+        return;
+      }
+
+      banner.classList.remove('hidden');
+      const prefix = STATE.uploadedImage
+        ? `🖼️ 照片【${STATE.uploadedImageFileName}】`
+        : '⏸️ 現場拍照定格';
+
+      if (getEffectiveCalcMode() === 'STATIONARY') {
+        bannerText.textContent = `${prefix} | 固定源不透光率 ${STATE.currentOpacity.toFixed(1)}% (建議 ${STATE.aiGrade} 級)`;
+      } else {
+        bannerText.textContent = `${prefix} | 移動源黑煙 ${STATE.currentOpacity.toFixed(1)}% (林格曼 ${STATE.aiGrade} 級)`;
+      }
+    }
+
+    /**
+     * 核心流程：現場拍照定格 (Freeze Frame)
+     * 若背景有活躍即時視訊則瞬間定格；若因 GAS iframe 受限無串流，則自動喚起手機原生相機拍照！
+     */
+    function freezeCameraFrame() {
+      if (STATE.mode === 'SIMULATION') {
+        // 模擬教學頁面直接進入存證預覽體驗
+        if (STATE.simSubMode === 'STATIONARY') {
+          captureStationaryEvidence();
+        } else {
+          captureMobileEvidence();
+        }
+        return;
+      }
+
+      const video = document.getElementById('cameraVideo');
+
+      // 若有即時鏡頭串流且正常播放中，執行 WebRTC 畫面定格
+      if (STATE.useRealCamera && STATE.mediaStream && video && video.readyState >= 2 && !video.paused) {
+        const canvas = document.getElementById('cvCanvas');
+        const freezeCanvas = document.createElement('canvas');
+        const w = canvas.width || 720;
+        const h = canvas.height || 960;
+        freezeCanvas.width = w;
+        freezeCanvas.height = h;
+        const sCtx = freezeCanvas.getContext('2d');
+
+        const vw = video.videoWidth || w;
+        const vh = video.videoHeight || h;
+        const zoom = STATE.zoomLevel || 1;
+        const sw = vw / zoom;
+        const sh = vh / zoom;
+        const sx = (vw - sw) / 2;
+        const sy = (vh - sh) / 2;
+        sCtx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+        STATE.frozenFrame = freezeCanvas;
+
+        if (navigator.vibrate) navigator.vibrate(70);
+        updateFreezeActionButtons(true);
+        performPeriodicSmokeAnalysis();
+        updateFreezeBannerContent();
+
+        showToast('📸 鏡頭畫面已拍照定格！可拖曳準星微調，確認後點擊「☁️ 存證並上傳雲端」');
+      } else {
+        // 若串流受限或未就緒，一鍵喚起手機原生相機現場拍照！
+        triggerNativeCameraCapture();
+      }
+    }
+
+    /**
+     * 恢復相機即時動態取景
+     */
+    function resumeLiveCamera() {
+      STATE.frozenFrame = null;
+      STATE.uploadedImage = null;
+      STATE.uploadedImageFileName = '';
+
+      if (STATE.mode === 'SIMULATION') {
+        switchMode('STATIONARY');
+      }
+
+      const banner = document.getElementById('freezeBanner');
+      if (banner) banner.classList.add('hidden');
+
+      updateFreezeActionButtons(false);
+      STATE.useRealCamera = true;
+
+      const video = document.getElementById('cameraVideo');
+      if (video) video.style.display = 'block';
+
+      if (!STATE.mediaStream || !STATE.videoTrack || STATE.videoTrack.readyState === 'ended' || video.paused) {
+        tryStartRearCamera(true);
+      } else {
+        const promptOverlay = document.getElementById('cameraPromptOverlay');
+        if (promptOverlay) promptOverlay.classList.add('hidden');
+        showToast('📷 已恢復鏡頭即時取景');
+      }
+    }
+
+    /**
+     * 切換底部操作按鈕的即時 / 定格狀態
+     */
+    function updateFreezeActionButtons(isFrozen) {
+      const calcMode = getEffectiveCalcMode();
+      if (calcMode === 'STATIONARY') {
+        const live = document.getElementById('statLiveActions');
+        const frozen = document.getElementById('statFrozenActions');
+        if (live && frozen) {
+          live.classList.toggle('hidden', isFrozen);
+          frozen.classList.toggle('hidden', !isFrozen);
+        }
+      } else {
+        const live = document.getElementById('mobLiveActions');
+        const frozen = document.getElementById('mobFrozenActions');
+        if (live && frozen) {
+          live.classList.toggle('hidden', isFrozen);
+          frozen.classList.toggle('hidden', !isFrozen);
+        }
+      }
+    }
+
+    function triggerPhotoUpload() {
+      const fileInput = document.getElementById('photoFileInput');
+      if (fileInput) fileInput.click();
+    }
+
+    function handlePhotoUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          if (STATE.mode === 'SIMULATION') {
+            switchMode(STATE.simSubMode || 'STATIONARY');
+          }
+          STATE.uploadedImage = img;
+          STATE.frozenFrame = null;
+          STATE.uploadedImageFileName = file.name || '現場照片';
+          STATE.useRealCamera = false;
+
+          const promptOverlay = document.getElementById('cameraPromptOverlay');
+          if (promptOverlay) promptOverlay.classList.add('hidden');
+          document.getElementById('simControlBox').classList.add('hidden');
+
+          // 清空舊的移動源緩衝區，避免殘留先前影格
+          STATE.ringBuffer = [];
+          STATE.peakOpacityInBuffer = 0;
+
+          updateFreezeActionButtons(true);
+          performPeriodicSmokeAnalysis();
+          updateFreezeBannerContent();
+
+          showToast(`🖼️ 已載入照片【${file.name}】！可拖曳準星分析並存證上傳`);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+      event.target.value = '';
+    }
+
+    function enableSimulationMode() {
+      switchMode('SIMULATION');
+    }
+
+    /**
+     * 鎖定/解鎖曝光與白平衡 (防止黑煙出現時手機自動拉高感光度)
+     */
+    async function toggleExposureLock() {
+      STATE.aeLocked = !STATE.aeLocked;
+      const btn = document.getElementById('btnAeLock');
+      const icon = document.getElementById('aeLockIcon');
+
+      if (STATE.videoTrack && typeof STATE.videoTrack.applyConstraints === 'function') {
+        try {
+          await STATE.videoTrack.applyConstraints({
+            advanced: [{
+              exposureMode: STATE.aeLocked ? 'manual' : 'continuous',
+              whiteBalanceMode: STATE.aeLocked ? 'manual' : 'continuous'
+            }]
+          });
+        } catch (e) {}
+      }
+
+      if (STATE.aeLocked) {
+        btn.classList.add('locked');
+        if (icon) icon.textContent = '🔒';
+        showToast('🔒 已鎖定相機曝光與白平衡 (AE/AWB Locked)');
+      } else {
+        btn.classList.remove('locked');
+        if (icon) icon.textContent = '🔓';
+        showToast('🔓 已解除曝光鎖定');
+      }
+    }
+
+    /**
+     * 設定光學/數位變焦倍率 (1x / 2x / 3x)
+     */
+    async function setZoomLevel(level) {
+      STATE.zoomLevel = level;
+      ['1x', '2x', '3x'].forEach(k => {
+        document.getElementById('zoom' + k).classList.toggle('active', k === level + 'x');
+      });
+
+      if (STATE.videoTrack && typeof STATE.videoTrack.getCapabilities === 'function') {
+        try {
+          const caps = STATE.videoTrack.getCapabilities();
+          if (caps && caps.zoom) {
+            const targetZoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min, level));
+            await STATE.videoTrack.applyConstraints({ advanced: [{ zoom: targetZoom }] });
+          }
+        } catch (e) {}
+      }
+      showToast(`🔍 變焦倍率已切換為 ${level}x`);
+    }
+
+    /**
+     * ========================================================================
+     * 5. GPS、電子羅盤與法規太陽方位檢核演算法
+     * ========================================================================
+     */
+    function initGeolocationAndSensors() {
+      if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(
+          pos => {
+            STATE.lat = Number(pos.coords.latitude.toFixed(5));
+            STATE.lng = Number(pos.coords.longitude.toFixed(5));
+            document.getElementById('gpsText').textContent = `📍 ${STATE.lat.toFixed(4)}, ${STATE.lng.toFixed(4)}`;
+            updateSunPositionAndCompliance();
+          },
+          () => {},
+          { enableHighAccuracy: true, maximumAge: 10000 }
+        );
+      }
+
+      window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+      window.addEventListener('deviceorientationabsolute', handleDeviceOrientation, true);
+    }
+
+    function requestCompassPermission() {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        DeviceOrientationEvent.requestPermission()
+          .then(state => {
+            if (state === 'granted') {
+              window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+              showToast('🧭 電子羅盤已授權啟動');
+            }
+          })
+          .catch(() => openSettingsDrawer());
+      } else {
+        openSettingsDrawer();
+      }
+    }
+
+    function handleDeviceOrientation(e) {
+      let compass = null;
+      if (typeof e.webkitCompassHeading === 'number') {
+        compass = e.webkitCompassHeading;
+      } else if (typeof e.alpha === 'number') {
+        compass = (360 - e.alpha) % 360;
+      }
+      if (compass !== null && !isNaN(compass)) {
+        STATE.heading = Math.round(compass);
+      }
+      if (typeof e.beta === 'number' && !isNaN(e.beta)) {
+        // 手機直立握持時 beta 約 90 度，計算鏡頭仰角
+        STATE.pitch = Math.max(-45, Math.min(85, Math.round(e.beta - 72)));
+      }
+      updateSunPositionAndCompliance();
+    }
+
+    function onManualHeadingChange(val) {
+      STATE.heading = Number(val);
+      document.getElementById('lblManualHeading').textContent = STATE.heading + '°';
+      updateSunPositionAndCompliance();
+    }
+
+    /**
+     * 天文太陽方位角與仰角計算 + 環境部《固定污染源目測判煙測定方法》背向太陽 140° 檢核
+     */
+    function updateSunPositionAndCompliance() {
+      const now = new Date();
+      const rad = Math.PI / 180;
+      const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);
+      const decl = 23.45 * Math.sin(rad * ((360 / 365) * (dayOfYear - 81)));
+      const timeZoneOffset = 8; // 台灣標準時間 UTC+8
+      const solarTime = now.getHours() + now.getMinutes() / 60 + (STATE.lng - timeZoneOffset * 15) / 15;
+      const hourAngle = 15 * (solarTime - 12);
+
+      const sinAlt = Math.sin(STATE.lat * rad) * Math.sin(decl * rad) +
+                     Math.cos(STATE.lat * rad) * Math.cos(decl * rad) * Math.cos(hourAngle * rad);
+      const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt))) / rad;
+
+      const cosAz = (Math.sin(decl * rad) - Math.sin(STATE.lat * rad) * sinAlt) /
+                    (Math.cos(STATE.lat * rad) * Math.cos(alt * rad) + 1e-6);
+      let az = Math.acos(Math.max(-1, Math.min(1, cosAz))) / rad;
+      if (hourAngle > 0) az = 360 - az;
+
+      STATE.sunAzimuth = Math.round(az);
+      STATE.sunAltitude = Math.round(alt);
+
+      // 太陽位於觀察者正後方時，觀察者鏡頭應朝向 (sunAzimuth + 180) % 360
+      const idealLookAzimuth = (STATE.sunAzimuth + 180) % 360;
+      let diff = Math.abs(STATE.heading - idealLookAzimuth);
+      if (diff > 180) diff = 360 - diff;
+      STATE.sunDiffFromBack = Math.round(diff);
+
+      const sunBadge = document.getElementById('sunBadge');
+      const sunText = document.getElementById('sunStatusText');
+
+      if (diff <= CONFIG.SUN_BACK_ANGLE_LIMIT) {
+        STATE.sunStatus = 'OK';
+        STATE.sunStatusText = `🟢 順光合格 (偏角 ${diff}°)`;
+        sunBadge.className = 'badge ok';
+      } else if (diff <= CONFIG.SUN_SIDE_ANGLE_LIMIT) {
+        STATE.sunStatus = 'WARN';
+        STATE.sunStatusText = `🟡 側光注意 (偏角 ${diff}°)`;
+        sunBadge.className = 'badge warn';
+      } else {
+        STATE.sunStatus = 'DANGER';
+        STATE.sunStatusText = `🔴 逆光違規 (偏角 ${diff}°)`;
+        sunBadge.className = 'badge danger';
+      }
+      sunText.textContent = STATE.sunStatusText;
+      document.getElementById('orientText').textContent = `🧭 方位 ${STATE.heading}° | 仰角 ${STATE.pitch >= 0 ? '+' : ''}${STATE.pitch}°`;
+    }
+
+    /**
+     * ========================================================================
+     * 6. 虛擬林格曼比色卡 (0~5 級標準網格與灰階切換)
+     * ========================================================================
+     */
+    function buildRingelmannStripVisuals() {
+      const ratios = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
+      for (let g = 0; g <= 5; g++) {
+        const cell = document.getElementById('rCell' + g);
+        const ratio = ratios[g];
+        if (STATE.ringelmannGridStyle && g > 0 && g < 5) {
+          // 使用 SVG Pattern 精確呈現林格曼黑線網格比例
+          const linePct = Math.round(Math.sqrt(ratio) * 10);
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">
+            <rect width="10" height="10" fill="#ffffff"/>
+            <rect width="10" height="${linePct}" fill="#000000"/>
+            <rect width="${linePct}" height="10" fill="#000000"/>
+          </svg>`;
+          const encoded = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+          cell.style.backgroundImage = `url("${encoded}")`;
+          cell.style.backgroundRepeat = 'repeat';
+        } else {
+          cell.style.backgroundImage = 'none';
+          const gray = Math.round(255 * (1 - ratio));
+          cell.style.backgroundColor = `rgb(${gray}, ${gray}, ${gray})`;
+        }
+      }
+    }
+
+    function toggleRingelmannStyle() {
+      STATE.ringelmannGridStyle = !STATE.ringelmannGridStyle;
+      const lbl = document.getElementById('gridStyleLabel');
+      if (lbl) lbl.textContent = STATE.ringelmannGridStyle ? '網格卡' : '灰階卡';
+      buildRingelmannStripVisuals();
+      showToast(STATE.ringelmannGridStyle ? '🏁 已切換為標準林格曼網格紋理' : '⬛ 已切換為純灰階比色塊');
+    }
+
+    function highlightRingelmannGrade(grade) {
+      for (let g = 0; g <= 5; g++) {
+        const cell = document.getElementById('rCell' + g);
+        if (cell) cell.classList.toggle('active-match', g === grade);
+      }
+    }
+
+    function opacityToRingelmannGrade(opacity) {
+      if (opacity >= CONFIG.RINGELMANN_G5_MIN) return 5;
+      if (opacity >= CONFIG.RINGELMANN_G4_MIN) return 4;
+      if (opacity >= CONFIG.RINGELMANN_G3_MIN) return 3;
+      if (opacity >= CONFIG.RINGELMANN_G2_MIN) return 2;
+      if (opacity >= CONFIG.RINGELMANN_G1_MIN) return 1;
+      return 0;
+    }
+
+    /**
+     * ========================================================================
+     * 7. 三頁籤模式切換 (固定源實測 / 移動源實測 / 獨立模擬教學頁面)
+     * ========================================================================
+     */
+    function getEffectiveCalcMode() {
+      if (STATE.mode === 'SIMULATION') {
+        return STATE.simSubMode || 'STATIONARY';
+      }
+      return STATE.mode;
+    }
+
+    function switchMode(newMode) {
+      STATE.mode = newMode;
+      const isSimPage = newMode === 'SIMULATION';
+      const calcMode = getEffectiveCalcMode();
+      const isStat = calcMode === 'STATIONARY';
+
+      document.getElementById('btnModeStationary').classList.toggle('active', newMode === 'STATIONARY');
+      document.getElementById('btnModeMobile').classList.toggle('active', newMode === 'MOBILE');
+      const btnSim = document.getElementById('btnModeSim');
+      if (btnSim) btnSim.classList.toggle('active', isSimPage);
+
+      document.getElementById('stationaryControls').classList.toggle('hidden', !isStat);
+      document.getElementById('mobileControls').classList.toggle('hidden', isStat);
+      document.getElementById('ringelmannStrip').classList.toggle('hidden', !isStat);
+
+      // 模擬控制盒僅在「🎓 模擬教學」頁面顯示，絕不污染主視窗
+      const simBox = document.getElementById('simControlBox');
+      if (simBox) {
+        simBox.classList.toggle('hidden', !isSimPage);
+        simBox.classList.toggle('full-width', !isStat);
+      }
+      document.getElementById('btnTriggerSimTruck').classList.toggle('hidden', isStat);
+      document.getElementById('btnWhiteSim').classList.toggle('hidden', !isStat);
+
+      const promptOverlay = document.getElementById('cameraPromptOverlay');
+      const video = document.getElementById('cameraVideo');
+
+      if (isSimPage) {
+        if (promptOverlay) promptOverlay.classList.add('hidden');
+        if (video) video.style.display = 'none';
+        const freezeBanner = document.getElementById('freezeBanner');
+        if (freezeBanner) freezeBanner.classList.add('hidden');
+        updateFreezeActionButtons(false);
+      } else {
+        if (video) video.style.display = 'block';
+        const isFrozenOrUploaded = Boolean(STATE.frozenFrame || STATE.uploadedImage);
+        updateFreezeActionButtons(isFrozenOrUploaded);
+        if (!isFrozenOrUploaded && (!STATE.mediaStream || !STATE.useRealCamera)) {
+          tryStartRearCamera(false);
+        }
+      }
+
+      if (isStat) {
+        document.getElementById('mTitle1').textContent = '實測不透光率';
+        document.getElementById('mTitle2').textContent = 'AI 建議級數';
+        document.getElementById('mTitle3').textContent = '15秒法規節拍';
+        document.getElementById('mValTimer').textContent = STATE.pacerRemainSec + 's';
+        document.getElementById('mSubCount').textContent = `已記 ${STATE.stationaryReadings.length} / ${CONFIG.STATIONARY_TOTAL_COUNTS} 筆`;
+      } else {
+        document.getElementById('mTitle1').textContent = '車輛瞬時黑煙';
+        document.getElementById('mTitle2').textContent = '判定級數';
+        document.getElementById('mTitle3').textContent = '路面基準亮度';
+        document.getElementById('mValTimer').textContent = `I:${STATE.roadBaselineLuma}`;
+        document.getElementById('mSubCount').textContent = STATE.roadBaselineLocked ? '基準已鎖定' : '動態對比中';
+        if (isSimPage && (STATE.simTruckX < -0.2 || STATE.simTruckX > 1.2)) {
+          triggerSimDieselTruck();
+        }
+      }
+
+      // 切換模式後立即重新計算並刷新底部三格卡、頂部定格列與警報橫幅（解決切換後殘留固定源結果的問題）
+      performPeriodicSmokeAnalysis();
+      updateFreezeBannerContent();
+
+      if (isSimPage) {
+        showToast('🎓 已進入【模擬教學頁面】，可自由調整煙羽濃度與練習判煙');
+      } else if (newMode === 'STATIONARY') {
+        showToast('🏭 已切換至【固定污染源（煙囪）】主視窗');
+      } else {
+        showToast('🚛 已切換至【移動污染源（烏賊車）】主視窗');
+      }
+    }
+
+    /**
+     * 在「🎓 模擬教學」頁面內部切換：模擬煙囪 vs. 模擬烏賊車
+     */
+    function setSimSubMode(subMode) {
+      STATE.simSubMode = subMode;
+      const btnStat = document.getElementById('btnSimSubStat');
+      const btnMob = document.getElementById('btnSimSubMob');
+      if (btnStat && btnMob) {
+        btnStat.style.background = subMode === 'STATIONARY' ? '#0284c7' : 'rgba(30,41,59,0.9)';
+        btnStat.style.borderColor = subMode === 'STATIONARY' ? '#38bdf8' : 'rgba(148,163,184,0.35)';
+        btnMob.style.background = subMode === 'MOBILE' ? '#d97706' : 'rgba(30,41,59,0.9)';
+        btnMob.style.borderColor = subMode === 'MOBILE' ? '#fbbf24' : 'rgba(148,163,184,0.35)';
+      }
+      if (STATE.mode === 'SIMULATION') {
+        switchMode('SIMULATION');
+      }
+    }
+
+    /**
+     * 調整移動源對照框尺寸（小 S / 中 M / 大 L），解決對照框過大問題
+     */
+    function setMobileRoiSize(sizeKey) {
+      STATE.mobileRoiSize = sizeKey;
+      const sizeMap = {
+        S: { w: 0.14, h: 0.09, label: '小 (機車/排氣管精準框)' },
+        M: { w: 0.22, h: 0.14, label: '中 (一般轎車/小貨車)' },
+        L: { w: 0.30, h: 0.18, label: '大 (大型柴油車寬煙羽)' }
+      };
+      const cfg = sizeMap[sizeKey] || sizeMap.S;
+
+      // 保持原中心點縮放
+      const cx1 = STATE.roadROI.x + STATE.roadROI.w / 2;
+      const cy1 = STATE.roadROI.y + STATE.roadROI.h / 2;
+      STATE.roadROI.w = cfg.w;
+      STATE.roadROI.h = cfg.h;
+      STATE.roadROI.x = Math.max(0.02, Math.min(0.98 - cfg.w, cx1 - cfg.w / 2));
+      STATE.roadROI.y = Math.max(0.08, Math.min(0.92 - cfg.h, cy1 - cfg.h / 2));
+
+      const cx2 = STATE.roadBgROI.x + STATE.roadBgROI.w / 2;
+      const cy2 = STATE.roadBgROI.y + STATE.roadBgROI.h / 2;
+      STATE.roadBgROI.w = cfg.w;
+      STATE.roadBgROI.h = cfg.h;
+      STATE.roadBgROI.x = Math.max(0.02, Math.min(0.98 - cfg.w, cx2 - cfg.w / 2));
+      STATE.roadBgROI.y = Math.max(0.08, Math.min(0.92 - cfg.h, cy2 - cfg.h / 2));
+
+      const bS = document.getElementById('btnRoiSmall');
+      const bM = document.getElementById('btnRoiMed');
+      const bL = document.getElementById('btnRoiLarge');
+      [
+        { el: bS, k: 'S' },
+        { el: bM, k: 'M' },
+        { el: bL, k: 'L' }
+      ].forEach(item => {
+        if (item.el) {
+          item.el.style.background = item.k === sizeKey ? '#0284c7' : 'rgba(30,41,59,0.9)';
+          item.el.style.borderColor = item.k === sizeKey ? '#38bdf8' : 'rgba(148,163,184,0.35)';
+        }
+      });
+
+      performPeriodicSmokeAnalysis();
+      updateFreezeBannerContent();
+      showToast(`📐 對照框已調整為：${cfg.label}`);
+    }
+
+    /**
+     * ========================================================================
+     * 8. Canvas 繪圖與雙模式實境模擬引擎 + ROI 觸控拖曳
+     * ========================================================================
+     */
+    function setupCanvasTouchInteractions() {
+      const canvas = document.getElementById('cvCanvas');
+
+      const getPos = e => {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+          nx: Math.max(0.04, Math.min(0.94, (clientX - rect.left) / rect.width)),
+          ny: Math.max(0.06, Math.min(0.92, (clientY - rect.top) / rect.height))
+        };
+      };
+
+      const onDown = e => {
+        const { nx, ny } = getPos(e);
+        if (getEffectiveCalcMode() === 'STATIONARY') {
+          const dPlume = Math.hypot(nx - STATE.plumeROI.x, ny - STATE.plumeROI.y);
+          const dSky = Math.hypot(nx - STATE.skyROI.x, ny - STATE.skyROI.y);
+          if (dPlume < 0.14) STATE.draggingROI = 'PLUME';
+          else if (dSky < 0.14) STATE.draggingROI = 'SKY';
+        } else {
+          // 移動源模式：可分別拖曳 🔴 黑煙排氣框 與 🔵 無煙背景基準框
+          const cxSmoke = STATE.roadROI.x + STATE.roadROI.w / 2;
+          const cySmoke = STATE.roadROI.y + STATE.roadROI.h / 2;
+          const cxBg = STATE.roadBgROI.x + STATE.roadBgROI.w / 2;
+          const cyBg = STATE.roadBgROI.y + STATE.roadBgROI.h / 2;
+
+          const dSmoke = Math.hypot(nx - cxSmoke, ny - cySmoke);
+          const dBg = Math.hypot(nx - cxBg, ny - cyBg);
+          if (dSmoke <= dBg && dSmoke < 0.18) {
+            STATE.draggingROI = 'ROAD_SMOKE';
+          } else if (dBg < 0.18) {
+            STATE.draggingROI = 'ROAD_BG';
+          }
+        }
+      };
+
+      const onMove = e => {
+        if (!STATE.draggingROI) return;
+        e.preventDefault();
+        const { nx, ny } = getPos(e);
+        if (STATE.draggingROI === 'PLUME') {
+          STATE.plumeROI.x = Math.max(0.06, Math.min(0.82, nx));
+          STATE.plumeROI.y = Math.max(0.08, Math.min(0.88, ny));
+        } else if (STATE.draggingROI === 'SKY') {
+          STATE.skyROI.x = Math.max(0.06, Math.min(0.82, nx));
+          STATE.skyROI.y = Math.max(0.08, Math.min(0.88, ny));
+        } else if (STATE.draggingROI === 'ROAD_SMOKE') {
+          STATE.roadROI.x = Math.max(0.02, Math.min(0.98 - STATE.roadROI.w, nx - STATE.roadROI.w / 2));
+          STATE.roadROI.y = Math.max(0.08, Math.min(0.92 - STATE.roadROI.h, ny - STATE.roadROI.h / 2));
+        } else if (STATE.draggingROI === 'ROAD_BG') {
+          STATE.roadBgROI.x = Math.max(0.02, Math.min(0.98 - STATE.roadBgROI.w, nx - STATE.roadBgROI.w / 2));
+          STATE.roadBgROI.y = Math.max(0.08, Math.min(0.92 - STATE.roadBgROI.h, ny - STATE.roadBgROI.h / 2));
+        }
+        // 拖曳準星時即時刷新數值與頂部定格橫幅
+        performPeriodicSmokeAnalysis();
+        updateFreezeBannerContent();
+      };
+
+      const onUp = () => { STATE.draggingROI = null; };
+
+      canvas.addEventListener('mousedown', onDown);
+      canvas.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+
+      canvas.addEventListener('touchstart', onDown, { passive: false });
+      canvas.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('touchend', onUp);
+    }
+
+    function onSimSliderChange(val) {
+      STATE.simSmokePercent = Number(val);
+      const g = opacityToRingelmannGrade(STATE.simSmokePercent);
+      document.getElementById('simSliderVal').textContent = STATE.simWhiteSmoke
+        ? `白煙水蒸氣 (${STATE.simSmokePercent}%)`
+        : `林格曼 ${g} 級 (${STATE.simSmokePercent}%)`;
+    }
+
+    function toggleWhiteSmokeSim() {
+      STATE.simWhiteSmoke = !STATE.simWhiteSmoke;
+      const btn = document.getElementById('btnWhiteSim');
+      btn.style.background = STATE.simWhiteSmoke ? '#0284c7' : 'rgba(30,41,59,0.9)';
+      onSimSliderChange(STATE.simSmokePercent);
+      showToast(STATE.simWhiteSmoke ? '💧 已切換為模擬白煙（水蒸氣亮度反轉測試）' : '🖤 已切換為模擬黑煙排放');
+    }
+
+    function triggerSimDieselTruck() {
+      STATE.simTruckX = -0.25;
+      const plates = ['KPA-8892', 'KEB-5168', 'TDC-3091', 'RAA-7725'];
+      STATE.simTruckPlate = plates[Math.floor(Math.random() * plates.length)];
+    }
+
+    /**
+     * 確保離屏純背景畫布 (_bgCanvas) 與主畫布尺寸一致，供像素亮度 1:1 精準採樣（不含 HUD 標線干擾）
+     */
+    function ensureBgCanvas(W, H) {
+      if (!STATE._bgCanvas) {
+        STATE._bgCanvas = document.createElement('canvas');
+        STATE._bgCtx = STATE._bgCanvas.getContext('2d', { willReadFrequently: true });
+      }
+      if (STATE._bgCanvas.width !== W || STATE._bgCanvas.height !== H) {
+        STATE._bgCanvas.width = W;
+        STATE._bgCanvas.height = H;
+      }
+      return STATE._bgCtx;
+    }
+
+    /**
+     * 主畫面與電腦視覺疊加層繪製迴圈 (60 FPS)
+     * - 當在「🎓 模擬教學」分頁時：繪製動態煙囪或烏賊車教學動畫。
+     * - 當在「🏭 固定源」或「🚛 移動源」主視窗時：
+     *   1. 若已拍照定格或載入照片：繪製該照片 + 疊加準星。
+     *   2. 否則直接由底層 <video id="cameraVideo"> 即時顯示相機畫面，#cvCanvas 保持背景透明僅疊加準星 HUD！
+     */
+    function mainRenderLoop() {
+      const canvas = document.getElementById('cvCanvas');
+      const rect = canvas.parentElement.getBoundingClientRect();
+      if (canvas.width !== Math.floor(rect.width) || canvas.height !== Math.floor(rect.height)) {
+        canvas.width = Math.max(320, Math.floor(rect.width));
+        canvas.height = Math.max(400, Math.floor(rect.height));
+      }
+
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const W = canvas.width;
+      const H = canvas.height;
+      const bgCtx = ensureBgCanvas(W, H);
+      const calcMode = getEffectiveCalcMode();
+      STATE.simTick += 1;
+
+      if (STATE.mode === 'SIMULATION') {
+        // 獨立「🎓 模擬教學」頁面
+        if (calcMode === 'STATIONARY') {
+          drawSimulatedChimneyScene(bgCtx, W, H, false);
+          ctx.drawImage(STATE._bgCanvas, 0, 0);
+          drawStationaryCrosshairsHUD(ctx, W, H);
+        } else {
+          drawSimulatedRoadScene(bgCtx, W, H, false);
+          ctx.drawImage(STATE._bgCanvas, 0, 0);
+          drawMobileRoadHUD(ctx, W, H);
+        }
+      } else if (STATE.frozenFrame || STATE.uploadedImage) {
+        // 現場拍照定格影像 或 上傳之實體現場照片 (保持比例置中填滿)
+        const source = STATE.frozenFrame || STATE.uploadedImage;
+        const fw = source.naturalWidth || source.videoWidth || source.width || W;
+        const fh = source.naturalHeight || source.videoHeight || source.height || H;
+        const imgRatio = fw / fh;
+        const canRatio = W / H;
+        let dw, dh, dx, dy;
+        if (canRatio > imgRatio) {
+          dw = W;
+          dh = W / imgRatio;
+          dx = 0;
+          dy = (H - dh) / 2;
+        } else {
+          dh = H;
+          dw = H * imgRatio;
+          dx = (W - dw) / 2;
+          dy = 0;
+        }
+        bgCtx.fillStyle = '#020617';
+        bgCtx.fillRect(0, 0, W, H);
+        bgCtx.drawImage(source, dx, dy, dw, dh);
+
+        ctx.drawImage(STATE._bgCanvas, 0, 0);
+        if (calcMode === 'STATIONARY') {
+          drawStationaryCrosshairsHUD(ctx, W, H);
+        } else {
+          drawMobileRoadHUD(ctx, W, H);
+        }
+      } else {
+        // 主視窗即時鏡頭模式：直接讓底層 <video id="cameraVideo"> 顯示即時畫面！
+        const video = document.getElementById('cameraVideo');
+        const zoom = STATE.zoomLevel || 1;
+        if (video) {
+          video.style.transform = zoom > 1 ? `scale(${zoom})` : 'none';
+        }
+
+        if (video && video.readyState >= 2 && !video.paused) {
+          // 清除上層 Canvas 背景為完全透明，讓底層 <video> 硬體加速即時畫面直接透出！
+          ctx.clearRect(0, 0, W, H);
+
+          // 同步將當前視訊幀繪入離屏 _bgCanvas 供電腦視覺演算法精準採樣像素
+          const vw = video.videoWidth || W;
+          const vh = video.videoHeight || H;
+          const sw = vw / zoom;
+          const sh = vh / zoom;
+          const sx = (vw - sw) / 2;
+          const sy = (vh - sh) / 2;
+          bgCtx.drawImage(video, sx, sy, sw, sh, 0, 0, W, H);
+        } else {
+          // 鏡頭等待授權或啟動中：顯示專業深色取景網格（絕不顯示卡通煙囪）
+          bgCtx.fillStyle = '#090d16';
+          bgCtx.fillRect(0, 0, W, H);
+          ctx.fillStyle = '#090d16';
+          ctx.fillRect(0, 0, W, H);
+
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(W / 3, 0); ctx.lineTo(W / 3, H);
+          ctx.moveTo((W * 2) / 3, 0); ctx.lineTo((W * 2) / 3, H);
+          ctx.moveTo(0, H / 3); ctx.lineTo(W, H / 3);
+          ctx.moveTo(0, (H * 2) / 3); ctx.lineTo(W, (H * 2) / 3);
+          ctx.stroke();
+
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = 'bold 13px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('📷 即時相機取景視窗', W / 2, H / 2 - 10);
+          ctx.font = '11px sans-serif';
+          ctx.fillStyle = '#64748b';
+          ctx.fillText('請允許瀏覽器相機權限，或點擊下方「📸 現場拍照」', W / 2, H / 2 + 12);
+          ctx.textAlign = 'start';
+        }
+
+        // 在透明 Canvas 上疊加即時採樣準星 HUD
+        if (calcMode === 'STATIONARY') {
+          drawStationaryCrosshairsHUD(ctx, W, H);
+        } else {
+          drawMobileRoadHUD(ctx, W, H);
+        }
+      }
+
+      requestAnimationFrame(mainRenderLoop);
+    }
+
+    /**
+     * 繪製固定污染源（工廠煙囪與動態煙羽）模擬場景（僅用於 🎓 模擬教學分頁）
+     */
+    function drawSimulatedChimneyScene(ctx, W, H, withHUD = true) {
+      // 天空漸層
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+      skyGrad.addColorStop(0, '#7dd3fc');
+      skyGrad.addColorStop(0.65, '#bae6fd');
+      skyGrad.addColorStop(1, '#334155');
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // 遠處廠房與地面
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, H * 0.72, W, H * 0.28);
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(W * 0.12, H * 0.62, W * 0.25, H * 0.12);
+
+      // 工廠紅白相間煙囪 (位於 x: 0.44, 頂部 y: 0.48)
+      const cx = W * 0.44;
+      const topY = H * 0.47;
+      const botY = H * 0.74;
+      ctx.fillStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.moveTo(cx - 18, topY);
+      ctx.lineTo(cx + 18, topY);
+      ctx.lineTo(cx + 26, botY);
+      ctx.lineTo(cx - 26, botY);
+      ctx.closePath();
+      ctx.fill();
+
+      // 紅白警示條紋
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(cx - 19, topY + 6, 38, 12);
+      ctx.fillRect(cx - 21, topY + 30, 42, 12);
+
+      // 動態飄升煙羽粒子
+      const smokeFactor = STATE.simSmokePercent / 100;
+      for (let i = 0; i < 18; i++) {
+        const progress = i / 17;
+        const driftX = cx + progress * 48 + Math.sin(STATE.simTick * 0.05 + i * 0.5) * (6 + progress * 10);
+        const driftY = topY - 12 - progress * (H * 0.34);
+        const radius = 18 + progress * 34;
+
+        let luma;
+        if (STATE.simWhiteSmoke) {
+          luma = Math.min(255, Math.round(215 + smokeFactor * 38));
+        } else {
+          luma = Math.max(8, Math.round(205 * (1 - smokeFactor * 0.96)));
+        }
+
+        const alpha = Math.max(0.25, (1 - progress * 0.45) * (STATE.simWhiteSmoke ? 0.92 : Math.max(0.35, smokeFactor + 0.15)));
+        ctx.fillStyle = `rgba(${luma}, ${luma}, ${luma}, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(driftX, driftY, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (withHUD) {
+        drawStationaryCrosshairsHUD(ctx, W, H);
+      }
+    }
+
+    /**
+     * 繪製移動污染源（柏油車道與柴油烏賊車呼嘯而過）模擬場景（僅用於 🎓 模擬教學分頁）
+     */
+    function drawSimulatedRoadScene(ctx, W, H, withHUD = true) {
+      // 上方城市背景與下方柏油路面
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(0, 0, W, H * 0.32);
+      ctx.fillStyle = '#3f4756';
+      ctx.fillRect(0, H * 0.32, W, H * 0.68);
+
+      // 車道標線
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([24, 18]);
+      ctx.beginPath();
+      ctx.moveTo(0, H * 0.58);
+      ctx.lineTo(W, H * 0.58);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 更新模擬柴油貨車移動位置
+      STATE.simTruckX += 0.0045;
+      if (STATE.simTruckX > 1.35) {
+        STATE.simTruckX = -0.35;
+      }
+
+      const tx = STATE.simTruckX * W;
+      const ty = H * 0.38;
+
+      // 當貨車經過畫面中央時排放濃煙羽
+      if (STATE.simTruckX > -0.1 && STATE.simTruckX < 1.2) {
+        const smokeFactor = STATE.simSmokePercent / 100;
+        const exhaustX = tx - 6;
+        const exhaustY = ty + 62;
+
+        // 排氣管後方黑煙團
+        for (let i = 0; i < 14; i++) {
+          const p = i / 13;
+          const sx = exhaustX - p * (W * 0.32) + Math.sin(STATE.simTick * 0.15 + i) * 5;
+          const sy = exhaustY - p * 12 + Math.cos(STATE.simTick * 0.12 + i) * 6;
+          const r = 14 + p * 28;
+          const gray = Math.max(8, Math.round(96 * (1 - smokeFactor * 0.92)));
+          ctx.fillStyle = `rgba(${gray}, ${gray}, ${gray}, ${Math.max(0.2, (1 - p * 0.5) * smokeFactor * 1.15)})`;
+          ctx.beginPath();
+          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 繪製藍色柴油貨車車體
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillRect(tx, ty, 115, 68);
+        ctx.fillStyle = '#0284c7';
+        ctx.fillRect(tx + 115, ty + 16, 42, 52);
+        // 車輪
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(tx + 28, ty + 72, 14, 0, Math.PI * 2);
+        ctx.arc(tx + 132, ty + 72, 14, 0, Math.PI * 2);
+        ctx.fill();
+        // 車牌號碼牌 (清晰供第一幀車牌識別)
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(tx + 6, ty + 46, 66, 18);
+        ctx.fillStyle = '#020617';
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText(STATE.simTruckPlate, tx + 10, ty + 59);
+      }
+
+      if (withHUD) {
+        drawMobileRoadHUD(ctx, W, H);
+      }
+    }
+
+    /**
+     * 繪製固定源雙點採樣準星 (🔴 煙羽準星 vs. 🔵 天空準星)
+     */
+    function drawStationaryCrosshairsHUD(ctx, W, H) {
+      const px = STATE.plumeROI.x * W;
+      const py = STATE.plumeROI.y * H;
+      const sx = STATE.skyROI.x * W;
+      const sy = STATE.skyROI.y * H;
+      const r = STATE.plumeROI.r;
+
+      // 連線虛線
+      ctx.strokeStyle = 'rgba(248, 250, 252, 0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 🔵 天空背景準星
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+      ctx.fillRect(sx - 42, sy - r - 22, 84, 18);
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`🔵天空 I:${STATE.skyLuma}`, sx - 38, sy - r - 9);
+
+      // 🔴 煙羽採樣準星
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+      ctx.fillRect(px - 42, py - r - 22, 84, 18);
+      ctx.fillStyle = '#fca5a5';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`🔴煙羽 I:${STATE.plumeLuma}`, px - 38, py - r - 9);
+    }
+
+    /**
+     * 繪製移動源精巧雙對照框 HUD (🔴 黑煙排氣框 vs. 🔵 無煙基準框)
+     * 縮小預設框體並加上中心十字準星，避免框住整台機車或背景建物
+     */
+    function drawMobileRoadHUD(ctx, W, H) {
+      const rx = STATE.roadROI.x * W;
+      const ry = STATE.roadROI.y * H;
+      const rw = STATE.roadROI.w * W;
+      const rh = STATE.roadROI.h * H;
+      const rcx = rx + rw / 2;
+      const rcy = ry + rh / 2;
+
+      const bx = STATE.roadBgROI.x * W;
+      const by = STATE.roadBgROI.y * H;
+      const bw = STATE.roadBgROI.w * W;
+      const bh = STATE.roadBgROI.h * H;
+      const bcx = bx + bw / 2;
+      const bcy = by + bh / 2;
+
+      // 兩框中央連線虛線
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(bcx, bcy);
+      ctx.lineTo(rcx, rcy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 1. 🔵 無煙路面基準框 (精巧框 + 中心十字)
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.2;
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.beginPath();
+      ctx.moveTo(bcx - 5, bcy); ctx.lineTo(bcx + 5, bcy);
+      ctx.moveTo(bcx, bcy - 5); ctx.lineTo(bcx, bcy + 5);
+      ctx.stroke();
+
+      const bgTagW = 104;
+      const bgTagX = Math.max(4, Math.min(W - bgTagW - 4, bcx - bgTagW / 2));
+      const bgTagY = by > 26 ? by - 20 : by + bh + 4;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+      ctx.fillRect(bgTagX, bgTagY, bgTagW, 17);
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText(`🔵基準 I:${STATE.roadBaselineLuma}`, bgTagX + 5, bgTagY + 12);
+
+      // 2. 🔴 車輛黑煙採樣框 (精巧框 + 中心十字)
+      const isExceed = STATE.currentOpacity >= CONFIG.MOBILE_OPACITY_WARN;
+      ctx.strokeStyle = isExceed ? '#ef4444' : '#f59e0b';
+      ctx.lineWidth = isExceed ? 2.8 : 2.2;
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.beginPath();
+      ctx.moveTo(rcx - 5, rcy); ctx.lineTo(rcx + 5, rcy);
+      ctx.moveTo(rcx, rcy - 5); ctx.lineTo(rcx, rcy + 5);
+      ctx.stroke();
+
+      const smokeLumaVal = STATE.peakLuma !== undefined
+        ? STATE.peakLuma
+        : Math.round(STATE.roadBaselineLuma * (1 - STATE.currentOpacity / 100));
+      const smkTagW = 138;
+      const smkTagX = Math.max(4, Math.min(W - smkTagW - 4, rcx - smkTagW / 2));
+      const smkTagY = ry > 26 ? ry - 20 : ry + rh + 4;
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.fillRect(smkTagX, smkTagY, smkTagW, 17);
+      ctx.fillStyle = isExceed ? '#fca5a5' : '#fde68a';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText(
+        `🔴黑煙 I:${smokeLumaVal} (${STATE.currentOpacity.toFixed(1)}%)`,
+        smkTagX + 5,
+        smkTagY + 12
+      );
+    }
+
+    /**
+     * 計算指定區域之平均灰階亮度 (Luminance = 0.299R + 0.587G + 0.114B)
+     * 直接從與主畫布 1:1 對齊且不含準星標線的離屏純背景畫布 (STATE._bgCanvas) 採樣
+     */
+    function sampleCanvasRegionLuma(ctx, cx, cy, halfSize) {
+      const targetCtx = STATE._bgCtx || ctx;
+      const canW = targetCtx.canvas.width;
+      const canH = targetCtx.canvas.height;
+      const x = Math.max(0, Math.floor(cx - halfSize));
+      const y = Math.max(0, Math.floor(cy - halfSize));
+      const w = Math.max(4, Math.min(canW - x, Math.floor(halfSize * 2)));
+      const h = Math.max(4, Math.min(canH - y, Math.floor(halfSize * 2)));
+      const imgData = targetCtx.getImageData(x, y, w, h).data;
+      let sum = 0;
+      const count = imgData.length / 4;
+      for (let i = 0; i < imgData.length; i += 4) {
+        sum += 0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2];
+      }
+      return Math.round(sum / Math.max(1, count));
+    }
+
+    /**
+     * 每 200ms 執行一次判煙不透光率運算與移動源 5 秒循環緩衝寫入
+     */
+    function performPeriodicSmokeAnalysis() {
+      const canvas = document.getElementById('cvCanvas');
+      if (!canvas || !canvas.width) return;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const W = canvas.width;
+      const H = canvas.height;
+      const banner = document.getElementById('cvAlertBanner');
+      const calcMode = getEffectiveCalcMode();
+
+      if (calcMode === 'STATIONARY') {
+        const px = STATE.plumeROI.x * W;
+        const py = STATE.plumeROI.y * H;
+        const sx = STATE.skyROI.x * W;
+        const sy = STATE.skyROI.y * H;
+
+        STATE.plumeLuma = sampleCanvasRegionLuma(ctx, px, py, 10);
+        STATE.skyLuma = Math.max(10, sampleCanvasRegionLuma(ctx, sx, sy, 10));
+
+        // 檢查是否為白煙（水蒸氣亮度反轉：煙羽比天空更亮）
+        if (STATE.plumeLuma > STATE.skyLuma * CONFIG.WHITE_SMOKE_RATIO) {
+          STATE.isWhiteSmoke = true;
+          STATE.currentOpacity = 0;
+          STATE.aiGrade = 0;
+          banner.style.display = 'block';
+          banner.style.background = 'rgba(2, 132, 199, 0.92)';
+          banner.textContent = '💧 固定源白煙（水蒸氣亮度反轉），非黑煙污染';
+        } else {
+          STATE.isWhiteSmoke = false;
+          const rawOpacity = (1 - STATE.plumeLuma / STATE.skyLuma) * 100;
+          STATE.currentOpacity = Math.max(0, Math.min(100, Number(rawOpacity.toFixed(1))));
+          STATE.aiGrade = opacityToRingelmannGrade(STATE.currentOpacity);
+
+          if (STATE.currentOpacity >= CONFIG.STATIONARY_OPACITY_WARN) {
+            banner.style.display = 'block';
+            banner.style.background = 'rgba(239, 68, 68, 0.92)';
+            banner.textContent = `🚨 固定源黑煙超標警戒！實測 ${STATE.currentOpacity.toFixed(1)}% (建議 ${STATE.aiGrade} 級)`;
+          } else {
+            banner.style.display = 'none';
+          }
+        }
+
+        // 更新底部數值與比色卡高亮
+        document.getElementById('mValOpacity').textContent = STATE.currentOpacity.toFixed(1) + '%';
+        document.getElementById('mSubLuminance').textContent = `煙 ${STATE.plumeLuma} / 空 ${STATE.skyLuma}`;
+        document.getElementById('mValGrade').textContent = STATE.isWhiteSmoke ? '0 級(白煙)' : `${STATE.aiGrade} 級`;
+        document.getElementById('mSubGradeDesc').textContent = `對應 ${STATE.aiGrade * 20}% 標準卡`;
+        highlightRingelmannGrade(STATE.aiGrade);
+      } else {
+        // 移動源（烏賊車）模式：依 🔴 車輛黑煙框 與 🔵 無煙基準框 計算移動源黑煙不透光率
+        const rx = (STATE.roadROI.x + STATE.roadROI.w / 2) * W;
+        const ry = (STATE.roadROI.y + STATE.roadROI.h / 2) * H;
+        const sampleHalfW = Math.max(6, Math.floor((STATE.roadROI.w * W) * 0.35));
+        const currentSmokeLuma = sampleCanvasRegionLuma(ctx, rx, ry, sampleHalfW);
+        STATE.peakLuma = currentSmokeLuma;
+
+        // 即時從 🔵 無煙基準框計算無煙路面/背景亮度
+        const bx = (STATE.roadBgROI.x + STATE.roadBgROI.w / 2) * W;
+        const by = (STATE.roadBgROI.y + STATE.roadBgROI.h / 2) * H;
+        const dynamicBgLuma = sampleCanvasRegionLuma(ctx, bx, by, sampleHalfW);
+
+        // 若處於照片定格/上傳模式或未鎖定基準，自動跟隨 🔵 無煙基準框亮度
+        let baseLuma = Math.max(15, STATE.roadBaselineLuma);
+        if (STATE.uploadedImage || STATE.frozenFrame || !STATE.roadBaselineLocked) {
+          baseLuma = Math.max(15, dynamicBgLuma);
+          STATE.roadBaselineLuma = baseLuma;
+        }
+
+        const rawDrop = (1 - currentSmokeLuma / baseLuma) * 100;
+        STATE.currentOpacity = Math.max(0, Math.min(100, Number(rawDrop.toFixed(1))));
+        STATE.aiGrade = opacityToRingelmannGrade(STATE.currentOpacity);
+
+        // 移動源黑煙數據展示
+        const mobileGrade = opacityToRingelmannGrade(STATE.currentOpacity);
+
+        document.getElementById('mValOpacity').textContent = STATE.currentOpacity.toFixed(1) + '%';
+        document.getElementById('mSubLuminance').textContent = `黑煙 ${currentSmokeLuma} / 基準 ${baseLuma}`;
+        document.getElementById('mValGrade').textContent = `林格曼 ${mobileGrade} 級`;
+        document.getElementById('mSubGradeDesc').textContent = STATE.currentOpacity >= CONFIG.MOBILE_OPACITY_WARN
+          ? `⚠️ 超過烏賊車閾值 (${CONFIG.MOBILE_OPACITY_WARN}%)`
+          : `🟢 未超標 (< ${CONFIG.MOBILE_OPACITY_WARN}%)`;
+        document.getElementById('mValTimer').textContent = `I:${baseLuma}`;
+        document.getElementById('mSubCount').textContent = STATE.roadBaselineLocked ? '基準已鎖定' : '動態比對中';
+        document.getElementById('ringBufferStatusText').textContent =
+          `黑煙 ${currentSmokeLuma} | 基準 ${baseLuma} (${STATE.currentOpacity.toFixed(1)}%)`;
+
+        // 判斷是否超標
+        const isExceedNow = STATE.currentOpacity >= CONFIG.MOBILE_OPACITY_WARN;
+
+        if (isExceedNow) {
+          banner.style.display = 'block';
+          banner.style.background = 'rgba(239, 68, 68, 0.92)';
+          banner.textContent = `🚨 移動源烏賊車超標！黑煙 ${STATE.currentOpacity.toFixed(1)}% (林格曼 ${STATE.aiGrade} 級)`;
+
+          // 邊緣觸發震動：僅在「剛超標瞬間」震動一次，且冷卻 5 秒，絕不每 200ms 重複震動！
+          const nowMs = new Date().getTime();
+          if (!STATE._lastMobExceedState && (nowMs - (STATE._lastMobVibrateMs || 0) > 5000)) {
+            if (navigator.vibrate && !STATE.uploadedImage && !STATE.frozenFrame) {
+              navigator.vibrate(100);
+            }
+            STATE._lastMobVibrateMs = nowMs;
+          }
+          STATE._lastMobExceedState = true;
+        } else {
+          banner.style.display = 'none';
+          STATE._lastMobExceedState = false;
+        }
+      }
+    }
+
+    /**
+     * ========================================================================
+     * 9. 模式 A：固定源 15 秒法規節拍計時器與 24 筆連續觀測紀錄
+     * ========================================================================
+     */
+    function selectManualGrade(g) {
+      STATE.selectedGrade = g;
+      for (let i = 0; i <= 5; i++) {
+        document.getElementById('gBtn' + i).classList.toggle('selected', i === g);
+      }
+    }
+
+    function recordStationaryStep(grade) {
+      selectManualGrade(grade);
+      if (STATE.stationaryReadings.length >= CONFIG.STATIONARY_TOTAL_COUNTS) {
+        showToast('已完成 24 筆連續觀測，請點擊「拍照存證並上傳雲端」或清空重測');
+        return;
+      }
+
+      const nowStr = new Date().toTimeString().split(' ')[0];
+      STATE.stationaryReadings.push({
+        index: STATE.stationaryReadings.length + 1,
+        time: nowStr,
+        opacity: STATE.currentOpacity,
+        aiGrade: STATE.aiGrade,
+        manualGrade: grade
+      });
+
+      if (navigator.vibrate) navigator.vibrate(60);
+      renderStationarySequenceDots();
+      document.getElementById('mSubCount').textContent =
+        `已記 ${STATE.stationaryReadings.length} / ${CONFIG.STATIONARY_TOTAL_COUNTS} 筆`;
+
+      if (STATE.stationaryReadings.length === CONFIG.STATIONARY_TOTAL_COUNTS) {
+        if (STATE.pacerActive) toggleStationaryPacer();
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 300]);
+        showToast('🎉 已完成 24 筆（6分鐘）連續判煙紀錄！自動開啟存證視窗');
+        captureStationaryEvidence();
+      }
+    }
+
+    function renderStationarySequenceDots() {
+      const container = document.getElementById('seqDotsContainer');
+      container.innerHTML = '';
+      const total = CONFIG.STATIONARY_TOTAL_COUNTS || 24;
+      for (let i = 0; i < total; i++) {
+        const dot = document.createElement('div');
+        const rec = STATE.stationaryReadings[i];
+        if (rec) {
+          dot.className = 'seq-dot ' + (rec.manualGrade >= 2 ? 'exceed' : 'ok');
+          dot.textContent = rec.manualGrade;
+        } else {
+          dot.className = 'seq-dot';
+          dot.textContent = i + 1;
+        }
+        container.appendChild(dot);
+      }
+    }
+
+    function resetStationaryReadings() {
+      STATE.stationaryReadings = [];
+      renderStationarySequenceDots();
+      document.getElementById('mSubCount').textContent = `已記 0 / ${CONFIG.STATIONARY_TOTAL_COUNTS} 筆`;
+      showToast('已清空連續判煙序列');
+    }
+
+    function toggleStationaryPacer() {
+      STATE.pacerActive = !STATE.pacerActive;
+      const btnText = document.getElementById('pacerBtnText');
+      if (STATE.pacerActive) {
+        STATE.pacerRemainSec = CONFIG.STATIONARY_INTERVAL_SEC;
+        btnText.textContent = '停止節拍計時';
+        showToast(`⏱️ 已啟動 ${CONFIG.STATIONARY_INTERVAL_SEC} 秒法規節拍器（震動提醒）`);
+        STATE.pacerIntervalId = setInterval(() => {
+          STATE.pacerRemainSec -= 1;
+          if (STATE.pacerRemainSec <= 0) {
+            if (navigator.vibrate) navigator.vibrate([220, 100, 220]);
+            showToast('🔔 15秒節拍到！已自動記錄當前建議級數（亦可點擊 0~5 級修正）');
+            recordStationaryStep(STATE.aiGrade);
+            STATE.pacerRemainSec = CONFIG.STATIONARY_INTERVAL_SEC;
+          }
+          document.getElementById('mValTimer').textContent = STATE.pacerRemainSec + 's';
+        }, 1000);
+      } else {
+        clearInterval(STATE.pacerIntervalId);
+        btnText.textContent = '啟動15秒節拍';
+        STATE.pacerRemainSec = CONFIG.STATIONARY_INTERVAL_SEC;
+        document.getElementById('mValTimer').textContent = STATE.pacerRemainSec + 's';
+      }
+    }
+
+    /**
+     * 固定源拍照存證（自動合成完整法規浮水印）
+     */
+    function captureStationaryEvidence() {
+      const srcCanvas = document.getElementById('cvCanvas');
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = 720;
+      outCanvas.height = 960;
+      const ctx = outCanvas.getContext('2d');
+
+      // 繪製現場畫面 (若為定格照片、上傳照片或相機即時串流則正確繪製)
+      const outW = outCanvas.width;
+      const outH = outCanvas.height;
+      if (STATE.frozenFrame) {
+        const frame = STATE.frozenFrame;
+        const fw = frame.naturalWidth || frame.videoWidth || frame.width || outW;
+        const fh = frame.naturalHeight || frame.videoHeight || frame.height || outH;
+        const imgRatio = fw / fh;
+        const canRatio = outW / outH;
+        let dw, dh, dx, dy;
+        if (canRatio > imgRatio) {
+          dw = outW;
+          dh = outW / imgRatio;
+          dx = 0;
+          dy = (outH - dh) / 2;
+        } else {
+          dh = outH;
+          dw = outH * imgRatio;
+          dx = (outW - dw) / 2;
+          dy = 0;
+        }
+        ctx.fillStyle = '#020617';
+        ctx.fillRect(0, 0, outW, outH);
+        ctx.drawImage(frame, dx, dy, dw, dh);
+        drawStationaryCrosshairsHUD(ctx, outW, outH);
+      } else if (STATE.uploadedImage) {
+        const img = STATE.uploadedImage;
+        const imgRatio = img.width / img.height;
+        const canRatio = outW / outH;
+        let dw, dh, dx, dy;
+        if (canRatio > imgRatio) {
+          dw = outW;
+          dh = outW / imgRatio;
+          dx = 0;
+          dy = (outH - dh) / 2;
+        } else {
+          dh = outH;
+          dw = outH * imgRatio;
+          dx = (outW - dw) / 2;
+          dy = 0;
+        }
+        ctx.fillStyle = '#020617';
+        ctx.fillRect(0, 0, outW, outH);
+        ctx.drawImage(img, dx, dy, dw, dh);
+        drawStationaryCrosshairsHUD(ctx, outW, outH);
+      } else if (STATE.useRealCamera) {
+        const video = document.getElementById('cameraVideo');
+        if (video.readyState >= 2) {
+          ctx.drawImage(video, 0, 0, outW, outH);
+          drawStationaryCrosshairsHUD(ctx, outW, outH);
+        } else {
+          ctx.drawImage(srcCanvas, 0, 0, outW, outH);
+        }
+      } else {
+        ctx.drawImage(srcCanvas, 0, 0, outW, outH);
+      }
+
+      // 壓印頂部與底部法規浮水印資訊框
+      const nowStr = new Date().toLocaleString('zh-TW', { hour12: false });
+      const readings = STATE.stationaryReadings;
+      const totalCounts = readings.length;
+      const exceedCounts = readings.filter(r => r.manualGrade >= 2).length;
+      const maxGrade = totalCounts > 0 ? Math.max(...readings.map(r => r.manualGrade)) : STATE.selectedGrade;
+      const avgOpacity = totalCounts > 0
+        ? Number((readings.reduce((s, r) => s + r.opacity, 0) / totalCounts).toFixed(1))
+        : STATE.currentOpacity;
+
+      ctx.fillStyle = 'rgba(9, 13, 22, 0.86)';
+      ctx.fillRect(0, outCanvas.height - 210, outCanvas.width, 210);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, outCanvas.height - 210);
+      ctx.lineTo(outCanvas.width, outCanvas.height - 210);
+      ctx.stroke();
+
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillText('【固定污染源目測判煙稽查存證紀錄】', 20, outCanvas.height - 172);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText(`實測不透光率：${STATE.currentOpacity}%  |  AI建議：${STATE.aiGrade}級  |  判定級數：林格曼 ${STATE.selectedGrade} 級`, 20, outCanvas.height - 136);
+
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '18px sans-serif';
+      ctx.fillText(`觀測時間：${nowStr}   GPS：${STATE.lat.toFixed(5)}, ${STATE.lng.toFixed(5)}`, 20, outCanvas.height - 102);
+      ctx.fillText(`鏡頭方位：${STATE.heading}° (仰角 ${STATE.pitch}°) | 太陽方位：${STATE.sunAzimuth}° | ${STATE.sunStatusText}`, 20, outCanvas.height - 70);
+      ctx.fillText(`連續觀測：共 ${totalCounts} 筆 (超標 >=2級 共 ${exceedCounts} 筆 | 最高 ${maxGrade} 級 | 平均不透光率 ${avgOpacity}%)`, 20, outCanvas.height - 36);
+
+      const photoDataUrl = outCanvas.toDataURL('image/jpeg', 0.85);
+
+      STATE.pendingEvidence = {
+        id: 'STAT-' + Date.now(),
+        timestamp: nowStr,
+        mode: 'STATIONARY',
+        sourceName: STATE.uploadedImageFileName ? STATE.uploadedImageFileName.replace(/\.[^/.]+$/, '') : 'A廠一號鍋爐煙囪',
+        note: (STATE.uploadedImage ? '【上傳照片辨識】' : '') + `${STATE.sunStatusText}，天空亮度 ${STATE.skyLuma}，煙羽亮度 ${STATE.plumeLuma}`,
+        lat: STATE.lat,
+        lng: STATE.lng,
+        heading: STATE.heading,
+        pitch: STATE.pitch,
+        sunAzimuth: STATE.sunAzimuth,
+        sunAltitude: STATE.sunAltitude,
+        sunDiffAngle: STATE.sunDiffFromBack,
+        sunStatusText: STATE.sunStatusText,
+        skyLuma: STATE.skyLuma,
+        plumeLuma: STATE.plumeLuma,
+        opacity: STATE.currentOpacity,
+        aiGrade: STATE.aiGrade,
+        finalGrade: STATE.selectedGrade,
+        totalCounts: totalCounts,
+        exceedCounts: exceedCounts,
+        maxGrade: maxGrade,
+        avgOpacity: avgOpacity,
+        readings: readings,
+        photoDataUrl: photoDataUrl
+      };
+
+      document.getElementById('captureDrawerTitle').textContent = '🏭 固定源煙囪判煙存證確認';
+      document.getElementById('inputLabelPrimary').textContent = '固定污染源名稱 / 煙囪編號';
+      document.getElementById('inputPrimaryName').value = STATE.pendingEvidence.sourceName;
+      document.getElementById('inputNote').value = STATE.pendingEvidence.note;
+      document.getElementById('evidencePreviewImg').src = photoDataUrl;
+      openDrawer('captureDrawer');
+    }
+
+    /**
+     * ========================================================================
+     * 10. 模式 B：移動源（烏賊車）路面基準鎖定與單張存證照片壓印演算法
+     * ========================================================================
+     */
+    function lockRoadBaseline() {
+      const canvas = document.getElementById('cvCanvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+      const bx = (STATE.roadBgROI.x + STATE.roadBgROI.w / 2) * canvas.width;
+      const by = (STATE.roadBgROI.y + STATE.roadBgROI.h / 2) * canvas.height;
+      const sampleHalfW = Math.max(6, Math.floor((STATE.roadBgROI.w * canvas.width) * 0.35));
+      const measuredLuma = sampleCanvasRegionLuma(ctx, bx, by, sampleHalfW);
+
+      STATE.roadBaselineLuma = Math.max(15, measuredLuma);
+      STATE.roadBaselineLocked = true;
+      if (navigator.vibrate) navigator.vibrate(80);
+      showToast(`🎯 已鎖定「🔵無煙基準框」路面亮度 (I = ${STATE.roadBaselineLuma})`);
+      performPeriodicSmokeAnalysis();
+    }
+
+    /**
+     * 移動源拍照存證（單張高畫質照片 + 雙對照框與法規浮水印壓印）
+     */
+    function captureMobileEvidence() {
+      const srcCanvas = document.getElementById('cvCanvas');
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = 720;
+      outCanvas.height = 960;
+      const ctx = outCanvas.getContext('2d');
+
+      const outW = outCanvas.width;
+      const outH = outCanvas.height;
+
+      // 1. 繪製底圖（定格照片 / 上傳照片 / 即時畫面）
+      if (STATE.frozenFrame) {
+        const frame = STATE.frozenFrame;
+        const fw = frame.naturalWidth || frame.videoWidth || frame.width || outW;
+        const fh = frame.naturalHeight || frame.videoHeight || frame.height || outH;
+        const imgRatio = fw / fh;
+        const canRatio = outW / outH;
+        let dw, dh, dx, dy;
+        if (canRatio > imgRatio) {
+          dw = outW; dh = outW / imgRatio; dx = 0; dy = (outH - dh) / 2;
+        } else {
+          dh = outH; dw = outH * imgRatio; dx = (outW - dw) / 2; dy = 0;
+        }
+        ctx.fillStyle = '#020617';
+        ctx.fillRect(0, 0, outW, outH);
+        ctx.drawImage(frame, dx, dy, dw, dh);
+        drawMobileRoadHUD(ctx, outW, outH);
+      } else if (STATE.uploadedImage) {
+        const img = STATE.uploadedImage;
+        const imgRatio = img.width / img.height;
+        const canRatio = outW / outH;
+        let dw, dh, dx, dy;
+        if (canRatio > imgRatio) {
+          dw = outW; dh = outW / imgRatio; dx = 0; dy = (outH - dh) / 2;
+        } else {
+          dh = outH; dw = outH * imgRatio; dx = (outW - dw) / 2; dy = 0;
+        }
+        ctx.fillStyle = '#020617';
+        ctx.fillRect(0, 0, outW, outH);
+        ctx.drawImage(img, dx, dy, dw, dh);
+        drawMobileRoadHUD(ctx, outW, outH);
+      } else if (STATE._bgCanvas) {
+        ctx.drawImage(STATE._bgCanvas, 0, 0, outW, outH);
+        drawMobileRoadHUD(ctx, outW, outH);
+      } else {
+        ctx.drawImage(srcCanvas, 0, 0, outW, outH);
+      }
+
+      // 2. 壓印底部法規浮水印
+      const nowStr = new Date().toLocaleString('zh-TW', { hour12: false });
+      const peakGrade = opacityToRingelmannGrade(STATE.currentOpacity);
+      const isExceed = STATE.currentOpacity >= CONFIG.MOBILE_OPACITY_WARN;
+
+      ctx.fillStyle = 'rgba(9, 13, 22, 0.88)';
+      ctx.fillRect(0, outCanvas.height - 180, outCanvas.width, 180);
+      ctx.strokeStyle = isExceed ? '#ef4444' : '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(0, outCanvas.height - 180);
+      ctx.lineTo(outCanvas.width, outCanvas.height - 180);
+      ctx.stroke();
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.fillText('【移動污染源（烏賊車）目測判煙存證紀錄】', 20, outCanvas.height - 142);
+
+      ctx.fillStyle = isExceed ? '#fca5a5' : '#6ee7b7';
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText(
+        `實測不透光率：${STATE.currentOpacity.toFixed(1)}% (林格曼 ${peakGrade} 級) — ${isExceed ? '【超標舉發】' : '【未超標】'}`,
+        20,
+        outCanvas.height - 108
+      );
+
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '17px sans-serif';
+      ctx.fillText(`無煙基準亮度 I_road：${STATE.roadBaselineLuma}  |  黑煙亮度 I_smoke：${STATE.peakLuma || '—'}  |  警戒值：${CONFIG.MOBILE_OPACITY_WARN}%`, 20, outCanvas.height - 74);
+      ctx.fillText(`稽查時間：${nowStr}  |  GPS：${STATE.lat.toFixed(5)}, ${STATE.lng.toFixed(5)}  |  方位：${STATE.heading}°`, 20, outCanvas.height - 42);
+      ctx.fillText(`雲端照片存證路徑：Google Drive ( ${CONFIG.DRIVE_FOLDER_PATH.replace(/\//g, '\\')} )`, 20, outCanvas.height - 14);
+
+      const photoDataUrl = outCanvas.toDataURL('image/jpeg', 0.85);
+
+      STATE.pendingEvidence = {
+        id: 'MOB-' + Date.now(),
+        timestamp: nowStr,
+        mode: 'MOBILE',
+        plateNumber: STATE.uploadedImageFileName ? STATE.uploadedImageFileName.replace(/\.[^/.]+$/, '') : (STATE.useRealCamera ? '待辨識車牌' : STATE.simTruckPlate),
+        locationNote: '路邊目測攔查存證',
+        lat: STATE.lat,
+        lng: STATE.lng,
+        heading: STATE.heading,
+        roadBaselineLuma: STATE.roadBaselineLuma,
+        peakLuma: STATE.peakLuma,
+        peakOpacity: STATE.currentOpacity,
+        ringelmannGrade: peakGrade,
+        warnThreshold: CONFIG.MOBILE_OPACITY_WARN,
+        isExceed: isExceed,
+        photoDataUrl: photoDataUrl
+      };
+
+      document.getElementById('captureDrawerTitle').textContent = '🚛 移動源烏賊車判煙存證確認';
+      document.getElementById('inputLabelPrimary').textContent = '車牌號碼 / 車輛特徵';
+      document.getElementById('inputPrimaryName').value = STATE.pendingEvidence.plateNumber;
+      document.getElementById('inputNote').value = STATE.pendingEvidence.locationNote;
+      document.getElementById('evidencePreviewImg').src = photoDataUrl;
+      openDrawer('captureDrawer');
+    }
+
+    // 保留 captureMobileThreeShot 作為相容性別名
+    function captureMobileThreeShot(isAuto = false) {
+      captureMobileEvidence();
+    }
+
+    function loadImageFromDataUrl(dataUrl) {
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.src = dataUrl;
+      });
+    }
+
+    /**
+     * ========================================================================
+     * 11. 雲端上傳 (Google Sheets + Google Drive `GAS/smoke`) 與本機離線備援
+     * ========================================================================
+     */
+    function submitEvidenceToCloud() {
+      if (!STATE.pendingEvidence) return;
+      const primaryVal = document.getElementById('inputPrimaryName').value.trim();
+      const noteVal = document.getElementById('inputNote').value.trim();
+
+      if (STATE.pendingEvidence.mode === 'STATIONARY') {
+        STATE.pendingEvidence.sourceName = primaryVal || '未命名固定源';
+        STATE.pendingEvidence.note = noteVal;
+      } else {
+        STATE.pendingEvidence.plateNumber = primaryVal || '待辨識車牌';
+        STATE.pendingEvidence.locationNote = noteVal;
+      }
+
+      const btn = document.getElementById('btnSubmitCloud');
+      btn.disabled = true;
+      btn.textContent = '☁️ 正在上傳至雲端...';
+
+      // 先寫入本機 localStorage 備份
+      saveRecordToLocal(STATE.pendingEvidence);
+
+      if (STATE.isGasEnv) {
+        google.script.run
+          .withSuccessHandler(res => {
+            btn.disabled = false;
+            btn.textContent = '☁️ 上傳 Sheets 與 Drive';
+            closeDrawer('captureDrawer');
+            if (res && res.ok) {
+              if (res.sheetUrl) STATE.sheetUrl = res.sheetUrl;
+              if (res.folderUrl) STATE.driveFolderUrl = res.folderUrl;
+              updateLocalRecordCloudUrls(STATE.pendingEvidence.id, res.photoUrl, res.folderUrl);
+              showToast('✅ 已寫入 Google Sheets 並存檔至 Google Drive (GAS\\smoke)！', 3800);
+            }
+          })
+          .withFailureHandler(err => {
+            btn.disabled = false;
+            btn.textContent = '☁️ 上傳 Sheets 與 Drive';
+            closeDrawer('captureDrawer');
+            showToast('⚠️ 雲端上傳失敗，已自動轉存於手機本機紀錄：' + (err.message || err), 3800);
+          })
+          .saveInspectionRecord(STATE.pendingEvidence);
+      } else {
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = '☁️ 上傳 Sheets 與 Drive';
+          closeDrawer('captureDrawer');
+          showToast('💾 已儲存至本機紀錄（部署至 GAS 後將自動同步至 Sheets 與 GAS\\smoke）', 3500);
+        }, 400);
+      }
+    }
+
+    function saveRecordToLocal(ev) {
+      const summary = {
+        id: ev.id,
+        timestamp: ev.timestamp,
+        mode: ev.mode,
+        title: ev.mode === 'STATIONARY' ? ev.sourceName : ev.plateNumber,
+        note: ev.mode === 'STATIONARY' ? ev.note : ev.locationNote,
+        lat: ev.lat,
+        lng: ev.lng,
+        opacity: ev.mode === 'STATIONARY' ? ev.opacity : ev.peakOpacity,
+        grade: ev.mode === 'STATIONARY' ? ev.finalGrade : ev.ringelmannGrade,
+        sunStatusText: ev.sunStatusText || (ev.isExceed ? '超標舉發' : '未超標'),
+        photoDataUrl: ev.collageDataUrl || ev.photoDataUrl,
+        photoUrl: '',
+        folderUrl: ''
+      };
+      STATE.records.unshift(summary);
+      if (STATE.records.length > 30) STATE.records.pop();
+      try {
+        // 避免 localStorage 容量爆滿，僅保留最近 10 筆含完整 Base64 預覽
+        const slim = STATE.records.map((r, i) => i < 8 ? r : { ...r, photoDataUrl: '' });
+        localStorage.setItem('SMOKE_INSPECTION_RECORDS_V1', JSON.stringify(slim));
+      } catch (e) {}
+      document.getElementById('recCountBadge').textContent = STATE.records.length;
+    }
+
+    function updateLocalRecordCloudUrls(id, photoUrl, folderUrl) {
+      const target = STATE.records.find(r => r.id === id);
+      if (target) {
+        target.photoUrl = photoUrl;
+        target.folderUrl = folderUrl;
+      }
+    }
+
+    function loadLocalRecords() {
+      try {
+        const raw = localStorage.getItem('SMOKE_INSPECTION_RECORDS_V1');
+        if (raw) {
+          STATE.records = JSON.parse(raw) || [];
+          document.getElementById('recCountBadge').textContent = STATE.records.length;
+        }
+      } catch (e) {
+        STATE.records = [];
+      }
+    }
+
+    function refreshCloudRecords() {
+      if (!STATE.isGasEnv) {
+        renderRecordsList();
+        return;
+      }
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res && res.ok && Array.isArray(res.records)) {
+            if (res.sheetUrl) {
+              STATE.sheetUrl = res.sheetUrl;
+              const sLink = document.getElementById('linkGoogleSheet');
+              sLink.href = res.sheetUrl;
+              sLink.style.display = 'inline-flex';
+            }
+            // 合併雲端紀錄與本機紀錄
+            const existingIds = new Set(STATE.records.map(r => r.id));
+            res.records.forEach(cr => {
+              if (!existingIds.has(cr.id)) {
+                STATE.records.push(cr);
+              }
+            });
+            document.getElementById('recCountBadge').textContent = STATE.records.length;
+            renderRecordsList();
+          }
+        })
+        .getRecentCloudRecords(15);
+    }
+
+    function renderRecordsList() {
+      const container = document.getElementById('recordsListContainer');
+      if (!STATE.records.length) {
+        container.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:24px;">尚無稽查存證紀錄</div>';
+        return;
+      }
+      container.innerHTML = STATE.records.map(r => {
+        const isStat = r.mode === 'STATIONARY';
+        const modeTag = isStat ? '🏭 固定源' : '🚛 烏賊車';
+        return `
+          <div class="record-item">
+            <div class="record-item-top">
+              <span>${modeTag}｜${escapeHtml(r.title)}</span>
+              <span style="color:#fcd34d;">不透光率 ${r.opacity}% (${r.grade}級)</span>
+            </div>
+            <div style="color:#cbd5e1;">🕒 ${escapeHtml(r.timestamp)} | 📍 ${r.lat}, ${r.lng}</div>
+            <div style="color:#94a3b8;">📝 ${escapeHtml(r.note || r.sunStatusText || '')}</div>
+            <div class="record-links">
+              ${r.photoUrl ? `<a href="${r.photoUrl}" target="_blank">🖼️ 開啟雲端照片 (GAS\\smoke)</a>` : ''}
+              ${r.folderUrl ? `<a href="${r.folderUrl}" target="_blank">📂 開啟雲端資料夾</a>` : ''}
+              ${r.photoDataUrl ? `<a href="${r.photoDataUrl}" download="${r.id}.jpg">💾 下載照片</a>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(str) {
+      return String(str || '').replace(/[&<>"']/g, s => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[s]));
+    }
+
+    /**
+     * 下載當前預覽之存證照片至手機本機
+     */
+    function downloadCurrentEvidenceLocal() {
+      if (!STATE.pendingEvidence) return;
+      const dataUrl = STATE.pendingEvidence.collageDataUrl || STATE.pendingEvidence.photoDataUrl;
+      if (!dataUrl) return;
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `${STATE.pendingEvidence.id}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('💾 已下載證據照片至手機');
+    }
+
+    /**
+     * 匯出 UTF-8 BOM CSV 稽查報表
+     */
+    function exportRecordsToCSV() {
+      if (!STATE.records.length) {
+        showToast('尚無紀錄可供匯出');
+        return;
+      }
+      const headers = ['紀錄編號', '稽查時間', '模式', '對象名稱/車牌', '不透光率(%)', '林格曼級數', 'GPS緯度', 'GPS經度', '備註/狀態', '雲端照片連結'];
+      const rows = STATE.records.map(r => [
+        r.id,
+        r.timestamp,
+        r.mode === 'STATIONARY' ? '固定污染源' : '移動污染源(烏賊車)',
+        `"${String(r.title || '').replace(/"/g, '""')}"`,
+        r.opacity,
+        r.grade,
+        r.lat,
+        r.lng,
+        `"${String(r.note || r.sunStatusText || '').replace(/"/g, '""')}"`,
+        r.photoUrl || '本機存證'
+      ]);
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `目測判煙稽查報表_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('📄 已匯出 UTF-8 BOM CSV 報表');
+    }
+
+    /**
+     * 產生 A4 列印版 PDF 稽查單
+     */
+    function printInspectionReportPDF() {
+      if (!STATE.records.length) {
+        showToast('尚無紀錄可供列印');
+        return;
+      }
+      const win = window.open('', '_blank');
+      if (!win) {
+        showToast('請允許彈出視窗以產生列印版稽查單');
+        return;
+      }
+      const rowsHtml = STATE.records.map(r => `
+        <tr>
+          <td>${escapeHtml(r.id)}</td>
+          <td>${escapeHtml(r.timestamp)}</td>
+          <td>${r.mode === 'STATIONARY' ? '固定源(煙囪)' : '移動源(烏賊車)'}</td>
+          <td><b>${escapeHtml(r.title)}</b><br><small>${escapeHtml(r.note || '')}</small></td>
+          <td style="text-align:center;font-weight:bold;">${r.opacity}%<br>(林格曼 ${r.grade} 級)</td>
+          <td>${r.lat}, ${r.lng}</td>
+          <td>${r.photoDataUrl ? `<img src="${r.photoDataUrl}" style="width:140px;border-radius:4px;">` : (r.photoUrl ? '已存雲端 GAS\\smoke' : '-')}</td>
+        </tr>
+      `).join('');
+
+      win.document.write(`
+        <!DOCTYPE html>
+        <html lang="zh-TW">
+        <head>
+          <meta charset="UTF-8">
+          <title>行動端 AI 輔助目測判煙稽查紀錄表</title>
+          <style>
+            body { font-family: "Microsoft JhengHei", sans-serif; padding: 20px; color: #0f172a; }
+            h1 { text-align: center; margin-bottom: 6px; font-size: 20px; }
+            p.meta { text-align: center; color: #475569; font-size: 12px; margin-top: 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+            th, td { border: 1px solid #94a3b8; padding: 8px; vertical-align: middle; }
+            th { background: #e2e8f0; }
+          </style>
+        </head>
+        <body>
+          <h1>行動端 AI 輔助目測判煙系統 — 現場稽查存證紀錄表</h1>
+          <p class="meta">Google Drive 照片存放路徑：GAS \\ smoke ｜ 報表產出時間：${new Date().toLocaleString('zh-TW')}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>紀錄編號</th>
+                <th>觀測時間</th>
+                <th>污染源模式</th>
+                <th>稽查對象 / 備註</th>
+                <th>不透光率 / 級數</th>
+                <th>GPS 座標</th>
+                <th>存證影像縮圖</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          <script>window.onload = () => setTimeout(() => window.print(), 400);<\/script>
+        </body>
+        </html>
+      `);
+      win.document.close();
+    }
+
+    /**
+     * 抽屜開關輔助函式
+     */
+    function openDrawer(id) {
+      document.getElementById(id).classList.add('open');
+    }
+    function closeDrawer(id) {
+      document.getElementById(id).classList.remove('open');
+    }
+    function openRecordsDrawer() {
+      renderRecordsList();
+      openDrawer('recordsDrawer');
+    }
+    function openSettingsDrawer() {
+      openDrawer('settingsDrawer');
+    }
+  </script>
+</body>
+</html>
