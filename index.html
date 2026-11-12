@@ -853,13 +853,13 @@
       <div id="cameraPromptOverlay" class="camera-prompt-overlay hidden">
         <div class="cam-prompt-content">
           <div style="font-size:11px;color:#e2e8f0;font-weight:700;line-height:1.35;">
-            📷 點擊授權啟動即時背景鏡頭，或直接調用手機原生相機：
+            📷 點擊直接在畫面中啟動即時鏡頭，或使用原生相機：
           </div>
-          <div style="display:flex;gap:6px;flex-shrink:0;">
-            <button class="icon-btn" style="background:#0284c7;border-color:#38bdf8;color:#fff;padding:5px 8px;font-size:11px;" onclick="tryStartRearCamera(true)">
+          <div style="display:flex;gap:8px;flex-shrink:0;">
+            <button class="icon-btn" style="background:#0284c7;border-color:#38bdf8;color:#fff;padding:6px 14px;font-size:12px;font-weight:bold;" onclick="tryStartRearCamera(true)">
               🎥 啟動即時鏡頭
             </button>
-            <button class="icon-btn" style="background:#d97706;border-color:#fbbf24;color:#fff;padding:5px 8px;font-size:11px;" onclick="triggerNativeCameraCapture()">
+            <button class="icon-btn" style="background:#d97706;border-color:#fbbf24;color:#fff;padding:6px 14px;font-size:12px;font-weight:bold;" onclick="triggerNativeCameraCapture()">
               📸 原生相機拍照
             </button>
           </div>
@@ -1178,6 +1178,7 @@
       mode: 'STATIONARY',           // 'STATIONARY' | 'MOBILE' | 'SIMULATION'
       simSubMode: 'STATIONARY',     // 模擬教學頁面內部子模式：'STATIONARY' (煙囪) | 'MOBILE' (烏賊車)
       useRealCamera: true,          // 主視窗預設直接顯示真實鏡頭即時畫面
+      _isRequestingCamera: false,   // 相機啟動互斥鎖，防止事件重疊衝突
       frozenFrame: null,            // 現場拍照定格畫布/影像物件
       uploadedImage: null,          // 上傳照片物件 Image
       uploadedImageFileName: '',    // 上傳照片檔案名稱
@@ -1253,17 +1254,8 @@
       initGeolocationAndSensors();
       updateSunPositionAndCompliance();
 
-      // 預設在主視窗直接啟動真實相機即時畫面
+      // 預設在主視窗直接嘗試啟動真實相機即時畫面 (對齊 smartcard 掛載即開體驗)
       tryStartRearCamera(false);
-
-      // 若行動瀏覽器要求首次手勢才允許播放視訊，於首次觸控時自動重試啟動鏡頭
-      const autoRetryCameraOnGesture = () => {
-        if (STATE.mode !== 'SIMULATION' && !STATE.mediaStream && !STATE.frozenFrame && !STATE.uploadedImage) {
-          tryStartRearCamera(false);
-        }
-      };
-      document.addEventListener('touchstart', autoRetryCameraOnGesture, { once: true, passive: true });
-      document.addEventListener('click', autoRetryCameraOnGesture, { once: true });
 
       // 啟動主視覺渲染與 200ms 判煙採樣迴圈
       requestAnimationFrame(mainRenderLoop);
@@ -1380,39 +1372,75 @@
      * ========================================================================
      */
     async function tryStartRearCamera(isManualClick = false) {
+      if (STATE._isRequestingCamera) {
+        console.log('相機啟動處理中，略過重疊請求');
+        return;
+      }
+      STATE._isRequestingCamera = true;
+
       const promptOverlay = document.getElementById('cameraPromptOverlay');
       const video = document.getElementById('cameraVideo');
       if (video) video.style.display = 'block';
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        console.warn('瀏覽器不支援 getUserMedia，提供原生相機拍照按鈕');
+        console.warn('瀏覽器不支援 getUserMedia');
         STATE.useRealCamera = false;
         if (promptOverlay && STATE.mode !== 'SIMULATION') promptOverlay.classList.remove('hidden');
-        showToast('⚠️ 瀏覽器未提供 WebRTC 鏡頭 API，請使用原生拍照', 3000);
+        if (isManualClick) showToast('⚠️ 您的瀏覽器不支援 WebRTC 鏡頭，請使用原生相機拍照', 3000);
+        STATE._isRequestingCamera = false;
         return;
       }
 
+      let stream = null;
       try {
-        let stream = null;
+        // 第一層：完全對齊 smartcard 之標準後置鏡頭配置
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        });
+      } catch (err1) {
+        console.warn('標準後置鏡頭嘗試失敗，降級為寬鬆後置鏡頭...', err1);
         try {
+          // 第二層：寬鬆後置鏡頭
           stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: 'environment' },
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
-            },
-            audio: false
+            video: { facingMode: 'environment' }
           });
-        } catch (firstErr) {
-          console.warn('後置鏡頭指定參數受限，嘗試任意視訊鏡頭:', firstErr);
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        } catch (err2) {
+          console.warn('寬鬆後置鏡頭嘗試失敗，降級為任意可用鏡頭...', err2);
+          try {
+            // 第三層：任意可用視訊設備 (保證最大硬體與權限相容性)
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true
+            });
+          } catch (err3) {
+            console.error('所有鏡頭請求皆未獲授權或失敗:', err3);
+            STATE.useRealCamera = false;
+            if (promptOverlay && STATE.mode !== 'SIMULATION' && !STATE.frozenFrame && !STATE.uploadedImage) {
+              promptOverlay.classList.remove('hidden');
+            }
+            if (isManualClick) {
+              const errName = err3.name || '';
+              if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+                showToast('⚠️ 相機授權未開啟。若被封鎖，請點網址列左側 🔒 圖示將相機改為「允許」並重試', 4500);
+              } else {
+                showToast(`⚠️ 相機啟動提示: ${errName || err3.message}`);
+              }
+            }
+            STATE._isRequestingCamera = false;
+            return;
+          }
         }
+      }
 
+      try {
+        // 完全對齊 smartcard 之串流綁定與自然播放
         video.srcObject = stream;
-        video.muted = true;
-        video.setAttribute('playsinline', '');
-        video.setAttribute('webkit-playsinline', '');
-        await video.play();
+        video.onloadedmetadata = () => {
+          video.play().catch(e => console.warn('視訊自動播放受阻:', e));
+        };
 
         STATE.mediaStream = stream;
         STATE.videoTrack = stream.getVideoTracks()[0] || null;
@@ -1424,21 +1452,9 @@
         updateFreezeActionButtons(false);
         showToast('📷 即時鏡頭已成功啟動！畫面即時取景中');
       } catch (e) {
-        console.warn('WebRTC 鏡頭啟動失敗:', e);
-        STATE.useRealCamera = false;
-        if (promptOverlay && STATE.mode !== 'SIMULATION' && !STATE.frozenFrame && !STATE.uploadedImage) {
-          promptOverlay.classList.remove('hidden');
-        }
-
-        if (isManualClick) {
-          // 只有當手動點擊且失敗時，明確告知權限受阻原因，絕不自動私自呼叫原生相機！
-          const errName = e.name || '';
-          if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
-            showToast('⚠️ 鏡頭授權被拒絕，請檢查瀏覽器設定允許相機權限');
-          } else {
-            showToast('⚠️ 雲端架構限制即時串流：' + (e.message || '無法開啟即時視訊'));
-          }
-        }
+        console.error('視訊掛載失敗:', e);
+      } finally {
+        STATE._isRequestingCamera = false;
       }
     }
 
@@ -2069,6 +2085,11 @@
             STATE.draggingROI = 'ROAD_BG';
           }
         }
+
+        // 若尚未連接即時相機且未拍照定格，點擊畫面中央直接手勢啟動即時鏡頭
+        if (!STATE.draggingROI && !STATE.mediaStream && !STATE.frozenFrame && !STATE.uploadedImage && STATE.mode !== 'SIMULATION') {
+          tryStartRearCamera(true);
+        }
       };
 
       const onMove = e => {
@@ -2239,13 +2260,13 @@
           ctx.moveTo(0, (H * 2) / 3); ctx.lineTo(W, (H * 2) / 3);
           ctx.stroke();
 
-          ctx.fillStyle = '#94a3b8';
-          ctx.font = 'bold 13px sans-serif';
+          ctx.fillStyle = '#38bdf8';
+          ctx.font = 'bold 14px sans-serif';
           ctx.textAlign = 'center';
-          ctx.fillText('📷 即時相機取景視窗', W / 2, H / 2 - 10);
+          ctx.fillText('📷 點擊畫面啟動即時鏡頭', W / 2, H / 2 - 10);
           ctx.font = '11px sans-serif';
-          ctx.fillStyle = '#64748b';
-          ctx.fillText('請允許瀏覽器相機權限，或點擊下方「📸 現場拍照」', W / 2, H / 2 + 12);
+          ctx.fillStyle = '#94a3b8';
+          ctx.fillText('或點擊下方「🎥 啟動即時鏡頭」/「📸 原生相機拍照」', W / 2, H / 2 + 14);
           ctx.textAlign = 'start';
         }
 

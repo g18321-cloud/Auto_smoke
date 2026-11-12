@@ -36,11 +36,10 @@ const SHEET_NAMES = {
 };
 
 /**
- * GAS Web App HTTP GET 入口
+ * GAS Web App HTTP GET 入口 (對齊 smartcard 原生直出架構，解除沙盒限制)
  */
 function doGet(e) {
-  const template = HtmlService.createTemplateFromFile('Index');
-  return template.evaluate()
+  return HtmlService.createHtmlOutputFromFile('index')
     .setTitle('行動端 AI 輔助目測判煙系統')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -340,30 +339,18 @@ function saveInspectionRecord(payload) {
       savedAt: timestampStr
     };
   } else {
-    // 移動污染源 (烏賊車) 三連拍存證與照片上傳
+    // 移動污染源 (烏賊車) 單張存證照片上傳 (相容舊版三連拍欄位)
     const plate = payload.plateNumber || '待辨識車牌';
     const safePlate = plate.replace(/[\\/:*?"<>|]/g, '_');
 
-    const collageUrl = saveBase64ImageToDrive_(
-      payload.collageDataUrl || payload.photoDataUrl,
-      `${fileTimeTag}_烏賊車三連拍_${safePlate}_${payload.peakOpacity}pct.jpg`,
+    const photoUrl = saveBase64ImageToDrive_(
+      payload.photoDataUrl || payload.collageDataUrl,
+      `${fileTimeTag}_烏賊車存證_${safePlate}_${payload.peakOpacity}pct.jpg`,
       targetFolder
     );
-    const frame1Url = saveBase64ImageToDrive_(
-      payload.frame1DataUrl,
-      `${fileTimeTag}_1車牌幀_${safePlate}.jpg`,
-      targetFolder
-    );
-    const frame2Url = saveBase64ImageToDrive_(
-      payload.frame2DataUrl,
-      `${fileTimeTag}_2起煙幀_${safePlate}.jpg`,
-      targetFolder
-    );
-    const frame3Url = saveBase64ImageToDrive_(
-      payload.frame3DataUrl,
-      `${fileTimeTag}_3峰值幀_${safePlate}_${payload.peakOpacity}pct.jpg`,
-      targetFolder
-    );
+    const frame1Url = payload.frame1DataUrl ? saveBase64ImageToDrive_(payload.frame1DataUrl, `${fileTimeTag}_1車牌幀_${safePlate}.jpg`, targetFolder) : '';
+    const frame2Url = payload.frame2DataUrl ? saveBase64ImageToDrive_(payload.frame2DataUrl, `${fileTimeTag}_2起煙幀_${safePlate}.jpg`, targetFolder) : '';
+    const frame3Url = payload.frame3DataUrl ? saveBase64ImageToDrive_(payload.frame3DataUrl, `${fileTimeTag}_3峰值幀_${safePlate}_${payload.peakOpacity}pct.jpg`, targetFolder) : '';
 
     const row = [
       recordId,
@@ -379,7 +366,7 @@ function saveInspectionRecord(payload) {
       payload.ringelmannGrade ?? '',
       payload.warnThreshold ?? 30,
       payload.isExceed ? '超標舉發' : '未超標',
-      collageUrl,
+      photoUrl,
       frame1Url,
       frame2Url,
       frame3Url,
@@ -391,8 +378,8 @@ function saveInspectionRecord(payload) {
       ok: true,
       mode: 'MOBILE',
       recordId: recordId,
-      photoUrl: collageUrl,
-      frameUrls: [frame1Url, frame2Url, frame3Url],
+      photoUrl: photoUrl,
+      frameUrls: [frame1Url, frame2Url, frame3Url].filter(Boolean),
       folderUrl: folderUrl,
       sheetUrl: ss.getUrl(),
       savedAt: timestampStr

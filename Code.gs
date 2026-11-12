@@ -36,11 +36,10 @@ const SHEET_NAMES = {
 };
 
 /**
- * GAS Web App HTTP GET 入口
+ * GAS Web App HTTP GET 入口 (對齊 smartcard 原生直出架構，解除沙盒限制)
  */
 function doGet(e) {
-  const template = HtmlService.createTemplateFromFile('Index');
-  return template.evaluate()
+  return HtmlService.createHtmlOutputFromFile('index')
     .setTitle('行動端 AI 輔助目測判煙系統')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
