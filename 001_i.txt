@@ -83,20 +83,35 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 6px;
+      gap: 4px;
       font-size: 11px;
+      width: 100%;
+      flex-wrap: nowrap;
+    }
+
+    .status-left-badges {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
     }
 
     .badge {
       display: inline-flex;
       align-items: center;
-      gap: 5px;
-      padding: 3px 8px;
+      gap: 3px;
+      padding: 3px 6px;
       border-radius: 999px;
       font-weight: 600;
       background: rgba(30, 41, 59, 0.85);
       border: 1px solid rgba(148, 163, 184, 0.25);
       white-space: nowrap;
+      font-size: 10.5px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex-shrink: 1;
     }
 
     .badge.ok {
@@ -117,7 +132,10 @@
 
     .top-actions {
       display: flex;
-      gap: 6px;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0; /* 核心關鍵：絕對禁止被擠出螢幕！ */
+      margin-left: 2px;
     }
 
     .icon-btn {
@@ -125,13 +143,18 @@
       border: 1px solid var(--panel-border);
       color: var(--text-main);
       border-radius: 8px;
-      padding: 4px 8px;
-      font-size: 12px;
+      padding: 4px 6px;
+      min-width: 30px;
+      height: 29px;
+      font-size: 13px;
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      justify-content: center;
+      gap: 2px;
+      flex-shrink: 0;
+      touch-action: manipulation;
     }
     .icon-btn:active {
       transform: scale(0.96);
@@ -781,20 +804,22 @@
     <!-- ==================== 頂部狀態與模式切換列 ==================== -->
     <header class="top-bar">
       <div class="status-row">
-        <div id="cloudBadge" class="badge warn" onclick="openRecordsDrawer()" style="cursor:pointer;" title="點擊查看雲端試算表與 GAS/smoke 資料夾">
-          <span id="cloudDot">🟠</span>
-          <span id="cloudText">偵測環境中...</span>
-        </div>
+        <div class="status-left-badges">
+          <div id="cloudBadge" class="badge warn" onclick="openRecordsDrawer()" style="cursor:pointer;" title="點擊查看雲端試算表與 GAS/smoke 資料夾">
+            <span id="cloudDot">🟠</span>
+            <span id="cloudText">離線模式</span>
+          </div>
 
-        <div id="sunBadge" class="badge ok" onclick="requestCompassPermission()" style="cursor:pointer;" title="點擊啟動電子羅盤或校正太陽角度">
-          <span id="sunStatusText">🟢 順光合格 (背光 32°)</span>
+          <div id="sunBadge" class="badge ok" onclick="requestCompassPermission()" style="cursor:pointer;" title="點擊啟動電子羅盤或校正太陽角度">
+            <span id="sunStatusText">🟢 順光合格</span>
+          </div>
         </div>
 
         <div class="top-actions">
           <button class="icon-btn" onclick="triggerPhotoUpload()" title="上傳現場照片進行辨識">📁</button>
           <button class="icon-btn" id="btnResumeCamTop" onclick="resumeLiveCamera()" title="切換/恢復即時相機鏡頭" style="background:#059669;border-color:#34d399;">📷</button>
-          <button class="icon-btn" onclick="openRecordsDrawer()" title="稽查紀錄與匯出">📋 <span id="recCountBadge">0</span></button>
-          <button class="icon-btn" onclick="openSettingsDrawer()" title="系統參數與模擬模式設定">⚙️</button>
+          <button class="icon-btn" onclick="openRecordsDrawer()" title="稽查紀錄與匯出">📋<span id="recCountBadge" style="font-size:10px;margin-left:1px;">0</span></button>
+          <button class="icon-btn" id="btnTopSettings" onclick="openSettingsDrawer()" title="系統參數與資安授權設定" style="background:#4338ca;border-color:#818cf8;box-shadow:0 0 6px rgba(129,140,248,0.5);">⚙️</button>
         </div>
       </div>
 
@@ -1306,7 +1331,7 @@
         syncConfigFromGAS();
         refreshCloudRecords();
       } else {
-        updateCloudBadge(false, '本機離線模式 (Local)');
+        updateCloudBadge(false, '離線模式');
       }
     });
 
@@ -1871,16 +1896,18 @@
         STATE.sunStatus = 'OK';
         STATE.sunStatusText = `🟢 順光合格 (偏角 ${diff}°)`;
         sunBadge.className = 'badge ok';
+        sunText.textContent = `🟢 順光 ${diff}°`;
       } else if (diff <= CONFIG.SUN_SIDE_ANGLE_LIMIT) {
         STATE.sunStatus = 'WARN';
         STATE.sunStatusText = `🟡 側光注意 (偏角 ${diff}°)`;
         sunBadge.className = 'badge warn';
+        sunText.textContent = `🟡 側光 ${diff}°`;
       } else {
         STATE.sunStatus = 'DANGER';
         STATE.sunStatusText = `🔴 逆光違規 (偏角 ${diff}°)`;
         sunBadge.className = 'badge danger';
+        sunText.textContent = `🔴 逆光 ${diff}°`;
       }
-      sunText.textContent = STATE.sunStatusText;
       document.getElementById('orientText').textContent = `🧭 方位 ${STATE.heading}° | 仰角 ${STATE.pitch >= 0 ? '+' : ''}${STATE.pitch}°`;
     }
 
