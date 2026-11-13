@@ -26,7 +26,8 @@ const DEFAULT_SYSTEM_CONFIG = [
   ['RINGELMANN_G2_MIN', '35', '%', '林格曼 2 級不透光率下限 (標準 40%)'],
   ['RINGELMANN_G3_MIN', '55', '%', '林格曼 3 級不透光率下限 (標準 60%)'],
   ['RINGELMANN_G4_MIN', '75', '%', '林格曼 4 級不透光率下限 (標準 80%)'],
-  ['RINGELMANN_G5_MIN', '95', '%', '林格曼 5 級不透光率下限 (標準 100%)']
+  ['RINGELMANN_G5_MIN', '95', '%', '林格曼 5 級不透光率下限 (標準 100%)'],
+  ['API_SECRET_KEY', 'SMOKE_2026_SECURE_TOKEN', '字串', '後端 API 授權驗證通行碼 (防止未授權惡意請求與灌水)']
 ];
 
 const SHEET_NAMES = {
@@ -36,13 +37,71 @@ const SHEET_NAMES = {
 };
 
 /**
- * GAS Web App HTTP GET 入口 (對齊 smartcard 原生直出架構，解除沙盒限制)
+ * GAS Web App HTTP GET 入口
+ * 1. 若帶有 ?api=getConfig 參數，以 JSON 格式回傳系統參數
+ * 2. 否則預設輸出 HTML 介面 (支援原生直出與全螢幕行動端 Viewport)
  */
 function doGet(e) {
+  // 遠端 REST API 查詢系統參數表 (排除機敏金鑰)
+  if (e && e.parameter && (e.parameter.api === 'getConfig' || e.parameter.action === 'getConfig')) {
+    try {
+      const cfgRes = getConfigFromSheet();
+      const safeConfig = Object.assign({}, cfgRes.config || {});
+      delete safeConfig.API_SECRET_KEY; // 安全脫敏，絕不透過 GET 暴露伺服器金鑰
+      return ContentService.createTextOutput(JSON.stringify({
+        ok: true,
+        config: safeConfig,
+        sheetUrl: cfgRes.sheetUrl,
+        driveFolderUrl: cfgRes.driveFolderUrl
+      })).setMimeType(ContentService.MimeType.JSON);
+    } catch (err) {
+      return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.toString() }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   return HtmlService.createHtmlOutputFromFile('index')
     .setTitle('行動端 AI 輔助目測判煙系統')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/**
+ * GAS Web App HTTP POST 入口 (供 GitHub Pages 遠端安全上傳資料庫與 Google Drive)
+ * 嚴格執行【對策 1：通行碼驗證】與【對策 2：檔案大小/格式安全檢查】
+ */
+function doPost(e) {
+  try {
+    const rawContent = (e && e.postData && e.postData.contents) ? e.postData.contents : '';
+    if (!rawContent) {
+      return ContentService.createTextOutput(JSON.stringify({ ok: false, error: '400 缺少 POST 內容' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const data = JSON.parse(rawContent);
+
+    // 1. 資安門禁驗證：通行碼驗證 + 檔案大小限制
+    validateRequestSecurity_(data);
+
+    const action = data.action || 'saveInspectionRecord';
+    const payload = data.payload || data;
+
+    if (action === 'saveInspectionRecord') {
+      const res = saveInspectionRecord(payload);
+      return ContentService.createTextOutput(JSON.stringify(res))
+        .setMimeType(ContentService.MimeType.JSON);
+    } else if (action === 'verifyToken') {
+      // 供前端測試通行碼是否正確
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, message: '通行碼驗證成功！後端授權通過' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    } else {
+      return ContentService.createTextOutput(JSON.stringify({ ok: false, error: '未知的操作指令: ' + action }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: err.message || err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }
 
 /**
@@ -272,12 +331,67 @@ function getConfigFromSheet() {
 }
 
 /**
+ * 核心資安檢驗函式：執行【對策 1：通行碼驗證】與【對策 2：檔案大小與合理性安全檢查】
+ */
+function validateRequestSecurity_(payload) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('400 格式錯誤：請求內容無效');
+  }
+
+  // 1. 取得系統目前設定之授權金鑰 (API_SECRET_KEY)
+  const cfgRes = getConfigFromSheet();
+  const cfg = cfgRes.config || {};
+  const serverSecret = String(cfg.API_SECRET_KEY || 'SMOKE_2026_SECURE_TOKEN').trim();
+
+  // 【對策 1：通行碼驗證 (API Secret Token Gate)】
+  const clientToken = String(payload.apiToken || payload.token || '').trim();
+  if (!clientToken || clientToken !== serverSecret) {
+    throw new Error('403 授權拒絕：通行碼錯誤或未授權，已阻擋寫入 Google Sheets / Drive！');
+  }
+
+  // 【對策 2：檔案大小安全檢查 (Payload Size Gate)】
+  // 檢查單張存證照片 Base64 體積 (限制上限 4.5MB，約合真實 JPEG 3.3MB)
+  const targetPhoto = payload.photoDataUrl || payload.collageDataUrl;
+  if (targetPhoto && typeof targetPhoto === 'string') {
+    if (targetPhoto.length > 4.5 * 1024 * 1024) {
+      throw new Error('413 容量超限：上傳照片體積超過 3.5MB 安全上限，已自動阻擋以保護儲存配額！');
+    }
+  }
+
+  // 檢查額外影格體積
+  ['frame1DataUrl', 'frame2DataUrl', 'frame3DataUrl'].forEach(key => {
+    if (payload[key] && typeof payload[key] === 'string' && payload[key].length > 3.0 * 1024 * 1024) {
+      throw new Error('413 容量超限：子影格體積超過安全上限！');
+    }
+  });
+
+  // 檢查數值合法性 (防惡意畸形數據灌水)
+  if (payload.opacity !== undefined && payload.opacity !== '') {
+    const op = Number(payload.opacity);
+    if (isNaN(op) || op < 0 || op > 100) {
+      throw new Error('400 數值異常：不透光率必須介於 0% 至 100% 之間');
+    }
+  }
+  if (payload.peakOpacity !== undefined && payload.peakOpacity !== '') {
+    const pop = Number(payload.peakOpacity);
+    if (isNaN(pop) || pop < 0 || pop > 100) {
+      throw new Error('400 數值異常：黑煙峰值不透光率必須介於 0% 至 100% 之間');
+    }
+  }
+
+  return true;
+}
+
+/**
  * [前端 API 2] 儲存判煙稽查紀錄至 Google Sheets 並上傳照片至 Google Drive (GAS/smoke)
  */
 function saveInspectionRecord(payload) {
   if (!payload || typeof payload !== 'object') {
     throw new Error('無效的判煙紀錄資料格式');
   }
+
+  // 執行資安檢驗 (若是由 doPost 呼叫前已檢驗，在此雙重確保)
+  validateRequestSecurity_(payload);
 
   const { ss, configSheet, statSheet, mobSheet } = ensureSheetsInitialized();
   const cfgRes = getConfigFromSheet();

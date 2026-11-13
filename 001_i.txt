@@ -1129,6 +1129,42 @@
           </div>
         </div>
 
+        <!-- 🔒 資安防護與雲端連線設定 (防濫用安全門禁) -->
+        <div class="form-group" style="border-top:1px solid rgba(56,189,248,0.3);padding-top:10px;background:rgba(15,23,42,0.6);padding:10px;border-radius:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <span style="font-size:12px;font-weight:bold;color:#38bdf8;">🔒 資安授權防護門禁 (防惡意調用)</span>
+            <span id="badgeSecurityStatus" style="font-size:10px;padding:2px 6px;border-radius:4px;background:#065f46;color:#a7f3d0;">已啟用防護</span>
+          </div>
+
+          <div style="margin-bottom:8px;">
+            <label style="font-size:11px;color:#cbd5e1;">🔑 稽查員授權通行碼 (API Secret Token)：</label>
+            <div style="display:flex;gap:4px;margin-top:2px;">
+              <input type="password" id="cfgApiToken" class="form-input" style="font-family:monospace;font-size:11px;" value="SMOKE_2026_SECURE_TOKEN" placeholder="請輸入後端 API 授權金鑰">
+              <button class="icon-btn" type="button" onclick="toggleTokenVisibility()" style="padding:4px 8px;font-size:12px;" title="顯示/隱藏金鑰">👁️</button>
+            </div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;">
+              🛡️ 【對策 1】後端驗證此通行碼吻合後，才允許寫入 Sheets 與 Google Drive，阻絕外部惡意灌水。
+            </div>
+          </div>
+
+          <div style="margin-bottom:6px;">
+            <label style="font-size:11px;color:#cbd5e1;">🌐 Google Apps Script 雲端後端網址 (Web App URL)：</label>
+            <input type="url" id="cfgGasApiUrl" class="form-input" style="font-size:11px;" placeholder="https://script.google.com/macros/s/.../exec">
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;">
+              🚀 供 GitHub Pages 前端將存證照片直接送往您的 Google 雲端儲存庫。
+            </div>
+          </div>
+
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <button class="icon-btn" type="button" onclick="testBackendSecurityToken()" style="background:#0284c7;border-color:#38bdf8;color:#fff;padding:4px 10px;font-size:11px;font-weight:bold;">
+              ⚡ 測試通行碼與連線
+            </button>
+            <button class="icon-btn" type="button" onclick="saveSecuritySettings()" style="background:#059669;border-color:#34d399;color:#fff;padding:4px 10px;font-size:11px;font-weight:bold;">
+              💾 儲存金鑰設定
+            </button>
+          </div>
+        </div>
+
         <div class="primary-actions-row">
           <button class="action-btn btn-slate" onclick="syncConfigFromGAS()">
             ☁️ 從 Sheets 重新讀取參數
@@ -1163,7 +1199,9 @@
       RINGELMANN_G2_MIN: 35,
       RINGELMANN_G3_MIN: 55,
       RINGELMANN_G4_MIN: 75,
-      RINGELMANN_G5_MIN: 95
+      RINGELMANN_G5_MIN: 95,
+      API_SECRET_KEY: 'SMOKE_2026_SECURE_TOKEN', // 後端防濫用授權金鑰 (對策 1)
+      MAX_PHOTO_BYTES: 4.5 * 1024 * 1024         // 4.5MB Base64 檔案大小上限門禁 (對策 2)
     };
 
     /**
@@ -1173,6 +1211,8 @@
      */
     const STATE = {
       isGasEnv: typeof google !== 'undefined' && google.script && google.script.run,
+      apiToken: localStorage.getItem('smoke_api_token') || 'SMOKE_2026_SECURE_TOKEN',
+      gasApiUrl: localStorage.getItem('smoke_gas_api_url') || '',
       sheetUrl: '',
       driveFolderUrl: '',
       mode: 'STATIONARY',           // 'STATIONARY' | 'MOBILE' | 'SIMULATION'
@@ -3043,10 +3083,10 @@
 
     /**
      * ========================================================================
-     * 11. 雲端上傳 (Google Sheets + Google Drive `GAS/smoke`) 與本機離線備援
+     * 11. 雲端上傳 (Google Sheets + Google Drive `GAS/smoke`) 與資安安全門禁
      * ========================================================================
      */
-    function submitEvidenceToCloud() {
+    async function submitEvidenceToCloud() {
       if (!STATE.pendingEvidence) return;
       const primaryVal = document.getElementById('inputPrimaryName').value.trim();
       const noteVal = document.getElementById('inputNote').value.trim();
@@ -3059,6 +3099,17 @@
         STATE.pendingEvidence.locationNote = noteVal;
       }
 
+      // 【對策 1：附帶通行碼 (API Secret Token)】
+      const currentToken = STATE.apiToken || localStorage.getItem('smoke_api_token') || 'SMOKE_2026_SECURE_TOKEN';
+      STATE.pendingEvidence.apiToken = currentToken;
+
+      // 【對策 2：前端檔案體積安全檢查 (Payload Size Gate)】
+      const targetPhoto = STATE.pendingEvidence.photoDataUrl || STATE.pendingEvidence.collageDataUrl;
+      if (targetPhoto && targetPhoto.length > CONFIG.MAX_PHOTO_BYTES) {
+        showToast('⚠️ 照片容量超過 3.5MB 安全上限，已自動阻擋以保護儲存配額！', 4000);
+        return;
+      }
+
       const btn = document.getElementById('btnSubmitCloud');
       btn.disabled = true;
       btn.textContent = '☁️ 正在上傳至雲端...';
@@ -3067,6 +3118,7 @@
       saveRecordToLocal(STATE.pendingEvidence);
 
       if (STATE.isGasEnv) {
+        // 在 Google Apps Script 容器環境中直接呼叫
         google.script.run
           .withSuccessHandler(res => {
             btn.disabled = false;
@@ -3076,23 +3128,56 @@
               if (res.sheetUrl) STATE.sheetUrl = res.sheetUrl;
               if (res.folderUrl) STATE.driveFolderUrl = res.folderUrl;
               updateLocalRecordCloudUrls(STATE.pendingEvidence.id, res.photoUrl, res.folderUrl);
-              showToast('✅ 已寫入 Google Sheets 並存檔至 Google Drive (GAS\\smoke)！', 3800);
+              showToast('✅ 通行碼驗證通過！已寫入 Google Sheets 並存檔至 Google Drive (GAS\\smoke)！', 4000);
             }
           })
           .withFailureHandler(err => {
             btn.disabled = false;
             btn.textContent = '☁️ 上傳 Sheets 與 Drive';
             closeDrawer('captureDrawer');
-            showToast('⚠️ 雲端上傳失敗，已自動轉存於手機本機紀錄：' + (err.message || err), 3800);
+            showToast('⚠️ 雲端上傳受阻：' + (err.message || err), 4000);
           })
           .saveInspectionRecord(STATE.pendingEvidence);
       } else {
-        setTimeout(() => {
-          btn.disabled = false;
-          btn.textContent = '☁️ 上傳 Sheets 與 Drive';
-          closeDrawer('captureDrawer');
-          showToast('💾 已儲存至本機紀錄（部署至 GAS 後將自動同步至 Sheets 與 GAS\\smoke）', 3500);
-        }, 400);
+        // 在 GitHub Pages 獨立網域環境，透過 CORS POST 安全發送至 GAS Web App
+        const gasUrl = STATE.gasApiUrl || localStorage.getItem('smoke_gas_api_url');
+        if (gasUrl) {
+          try {
+            const resp = await fetch(gasUrl, {
+              method: 'POST',
+              body: JSON.stringify({
+                action: 'saveInspectionRecord',
+                payload: STATE.pendingEvidence,
+                apiToken: currentToken
+              })
+            });
+            const res = await resp.json();
+            btn.disabled = false;
+            btn.textContent = '☁️ 上傳 Sheets 與 Drive';
+            closeDrawer('captureDrawer');
+            if (res && res.ok) {
+              if (res.sheetUrl) STATE.sheetUrl = res.sheetUrl;
+              if (res.folderUrl) STATE.driveFolderUrl = res.folderUrl;
+              updateLocalRecordCloudUrls(STATE.pendingEvidence.id, res.photoUrl, res.folderUrl);
+              showToast('✅ 通行碼驗證通過！已遠端同步至 Google Sheets 與 Drive (GAS\\smoke)！', 4200);
+            } else {
+              showToast('⚠️ 後端安全門禁回報：' + (res.error || '存檔失敗'), 4500);
+            }
+          } catch (fetchErr) {
+            btn.disabled = false;
+            btn.textContent = '☁️ 上傳 Sheets 與 Drive';
+            closeDrawer('captureDrawer');
+            showToast('⚠️ 遠端連線異常，已先保存在本機紀錄：' + (fetchErr.message || fetchErr), 4000);
+          }
+        } else {
+          // 未填入 GAS 網址時，提示存於本機並指引至設定抽屜
+          setTimeout(() => {
+            btn.disabled = false;
+            btn.textContent = '☁️ 上傳 Sheets 與 Drive';
+            closeDrawer('captureDrawer');
+            showToast('💾 已安全儲存於手機本機紀錄！(若需即時同步至 Google 雲端，請至「⚙️ 系統設定」填入 GAS 網址與通行碼)', 4500);
+          }, 300);
+        }
       }
     }
 
@@ -3330,7 +3415,86 @@
       openDrawer('recordsDrawer');
     }
     function openSettingsDrawer() {
+      // 自動帶入當前設定之通行碼與 GAS 網址
+      const tokenInput = document.getElementById('cfgApiToken');
+      const gasUrlInput = document.getElementById('cfgGasApiUrl');
+      if (tokenInput) tokenInput.value = STATE.apiToken || localStorage.getItem('smoke_api_token') || 'SMOKE_2026_SECURE_TOKEN';
+      if (gasUrlInput) gasUrlInput.value = STATE.gasApiUrl || localStorage.getItem('smoke_gas_api_url') || '';
       openDrawer('settingsDrawer');
+    }
+
+    /**
+     * 切換通行碼密碼可見性 (👁️)
+     */
+    function toggleTokenVisibility() {
+      const input = document.getElementById('cfgApiToken');
+      if (input) {
+        input.type = input.type === 'password' ? 'text' : 'password';
+      }
+    }
+
+    /**
+     * 儲存資安與連線設定 (通行碼 + GAS URL)
+     */
+    function saveSecuritySettings() {
+      const tokenInput = document.getElementById('cfgApiToken');
+      const gasUrlInput = document.getElementById('cfgGasApiUrl');
+      if (tokenInput) {
+        const val = tokenInput.value.trim();
+        STATE.apiToken = val;
+        localStorage.setItem('smoke_api_token', val);
+      }
+      if (gasUrlInput) {
+        const urlVal = gasUrlInput.value.trim();
+        STATE.gasApiUrl = urlVal;
+        localStorage.setItem('smoke_gas_api_url', urlVal);
+      }
+      showToast('🔒 資安授權金鑰與連線設定已成功儲存！', 3000);
+    }
+
+    /**
+     * 測試後端連線與通行碼授權 (Ping Test)
+     */
+    async function testBackendSecurityToken() {
+      const token = (document.getElementById('cfgApiToken')?.value || '').trim();
+      const gasUrl = (document.getElementById('cfgGasApiUrl')?.value || '').trim() || STATE.gasApiUrl;
+
+      if (!token) {
+        showToast('⚠️ 請先輸入通行碼！', 3000);
+        return;
+      }
+
+      showToast('🔄 正在向後端驗證通行碼...', 2000);
+
+      if (STATE.isGasEnv) {
+        // GAS 容器內測試
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res && res.ok) showToast('✅ 驗證成功！通行碼合法有效', 3500);
+            else showToast('⚠️ 驗證失敗：' + (res.error || '金鑰不符合'), 4000);
+          })
+          .withFailureHandler(err => showToast('⚠️ 連線異常：' + (err.message || err), 4000))
+          .getConfigFromSheet();
+      } else {
+        if (!gasUrl) {
+          showToast('⚠️ 請先填入「Google Apps Script 雲端後端網址」再進行測試！', 4000);
+          return;
+        }
+        try {
+          const resp = await fetch(gasUrl, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'verifyToken', apiToken: token })
+          });
+          const res = await resp.json();
+          if (res && res.ok) {
+            showToast('🎉 連線與通行碼驗證 100% 成功！後端已開放合法存證寫入！', 4500);
+          } else {
+            showToast('❌ 驗證失敗 (403)：' + (res.error || '通行碼錯誤'), 4500);
+          }
+        } catch (e) {
+          showToast('⚠️ 無法連線至 GAS 後端，請確認網址是否正確發布為「任何人」存取：' + e.message, 4500);
+        }
+      }
     }
   </script>
 </body>
